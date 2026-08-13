@@ -1,0 +1,112 @@
+import React from "react";
+import {
+  UtensilsCrossed,
+  Home,
+  Car,
+  Heart,
+  BookOpen,
+  Smile,
+  ShoppingBag,
+  Smartphone,
+  RefreshCw,
+  PawPrint,
+  FileText,
+  TrendingUp,
+  Gift,
+  MoreHorizontal,
+  Briefcase,
+  Laptop,
+  Building2,
+  Tag,
+  Award,
+  Plus,
+  Minus,
+  Banknote,
+  CreditCard,
+  PiggyBank,
+  Wallet,
+  Landmark,
+  Receipt,
+  ShoppingCart,
+  Coffee,
+  Plane,
+  Dumbbell,
+  Music,
+  Film,
+  Wrench,
+  Zap,
+  Droplets,
+  Leaf,
+  Baby,
+  GraduationCap,
+  Stethoscope,
+  Package,
+  DollarSign,
+  ChartPie,
+  ArrowLeftRight,
+} from "lucide-react";
+
+const iconMap: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
+  UtensilsCrossed,
+  Home,
+  Car,
+  Heart,
+  BookOpen,
+  Smile,
+  ShoppingBag,
+  Smartphone,
+  RefreshCw,
+  PawPrint,
+  FileText,
+  TrendingUp,
+  Gift,
+  MoreHorizontal,
+  Briefcase,
+  Laptop,
+  Building2,
+  Tag,
+  Award,
+  Plus,
+  Minus,
+  Banknote,
+  CreditCard,
+  PiggyBank,
+  Wallet,
+  Landmark,
+  Receipt,
+  ShoppingCart,
+  Coffee,
+  Plane,
+  Dumbbell,
+  Music,
+  Film,
+  Wrench,
+  Zap,
+  Droplets,
+  Leaf,
+  Baby,
+  GraduationCap,
+  Stethoscope,
+  Package,
+  DollarSign,
+  ChartPie,
+  ArrowLeftRight,
+};
+
+export function CategoryIcon({
+  name,
+  className,
+  size = 16,
+}: {
+  name?: string | null;
+  className?: string;
+  size?: number;
+}) {
+  if (!name) {
+    return <MoreHorizontal className={className} size={size} />;
+  }
+  const Icon = iconMap[name] ?? MoreHorizontal;
+  return <Icon className={className} size={size} />;
+}
+
+export const ICON_OPTIONS = Object.keys(iconMap);

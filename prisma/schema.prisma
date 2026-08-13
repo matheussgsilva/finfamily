@@ -1,0 +1,322 @@
+// FinFamily — Personal Wealth Hub
+// Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// NextAuth.js — Modelos de Autenticação
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  // App relations
+  familyMembers FamilyMember[]
+  transactions  Transaction[]
+  budgets       Budget[]
+  bankAccounts  BankAccount[]
+  investments   Investment[]
+  categories    Category[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — Membro da Família
+// ─────────────────────────────────────────────────────────────
+
+model FamilyMember {
+  id           String        @id @default(cuid())
+  name         String
+  color        String        @default("#6366f1")
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("family_members")
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — Contas Bancárias / Cartões
+// ─────────────────────────────────────────────────────────────
+
+model BankAccount {
+  id           String      @id @default(cuid())
+  name         String
+  type         AccountType
+  balance      Decimal     @default(0) @db.Decimal(15, 2)
+  creditLimit  Decimal?    @db.Decimal(15, 2)
+  closingDay   Int? // Dia de fechamento da fatura (cartões)
+  dueDay       Int? // Dia de vencimento da fatura (cartões)
+  color        String      @default("#6366f1")
+  icon         String?
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactions         Transaction[] @relation("AccountTransactions")
+  destinationTransfers Transaction[] @relation("TransferDestination")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("bank_accounts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — Categorias (Sistema + Customizadas pelo usuário)
+// ─────────────────────────────────────────────────────────────
+
+model Category {
+  id       String       @id @default(cuid())
+  name     String
+  type     CategoryType
+  icon     String?
+  color    String       @default("#6366f1")
+  parentId String?
+  parent   Category?    @relation("SubCategories", fields: [parentId], references: [id])
+  children Category[]   @relation("SubCategories")
+  userId   String? // null = categoria global do sistema
+  user     User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+  budgets      Budget[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("categories")
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — Transações Financeiras
+// ─────────────────────────────────────────────────────────────
+
+model Transaction {
+  id          String          @id @default(cuid())
+  description String
+  amount      Decimal         @db.Decimal(15, 2)
+  type        TransactionType
+  date        DateTime
+  notes       String?
+  tags        String[]        @default([])
+
+  // Recorrência
+  isRecurring    Boolean @default(false)
+  recurrenceRule String? // RRULE string (ex: FREQ=MONTHLY;INTERVAL=1)
+
+  // Parcelamento
+  installments   Int?    // Total de parcelas
+  installmentNum Int?    // Número da parcela atual
+  parentId       String? // ID da transação pai (series)
+
+  // Relações
+  categoryId   String?
+  category     Category?    @relation(fields: [categoryId], references: [id])
+  bankAccountId String
+  bankAccount  BankAccount  @relation("AccountTransactions", fields: [bankAccountId], references: [id])
+
+  // Para transferências: conta de destino
+  destinationAccountId String?
+  destinationAccount   BankAccount? @relation("TransferDestination", fields: [destinationAccountId], references: [id])
+
+  familyMemberId String?
+  familyMember   FamilyMember? @relation(fields: [familyMemberId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([userId, type])
+  @@index([categoryId])
+  @@map("transactions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — Orçamentos (Budgets) por Categoria/Mês
+// ─────────────────────────────────────────────────────────────
+
+model Budget {
+  id         String   @id @default(cuid())
+  amount     Decimal  @db.Decimal(15, 2)
+  month      Int // 1-12
+  year       Int
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([categoryId, month, year, userId])
+  @@map("budgets")
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — Investimentos / Ativos
+// ─────────────────────────────────────────────────────────────
+
+model Investment {
+  id           String     @id @default(cuid())
+  ticker       String? // Código do ativo (PETR4, MXRF11, BTC, etc.)
+  name         String
+  assetClass   AssetClass
+  quantity     Decimal    @default(0) @db.Decimal(18, 8)
+  avgPrice     Decimal    @default(0) @db.Decimal(18, 6) // Preço médio de custo
+  currentPrice Decimal?   @db.Decimal(18, 6) // Preço atual (atualizado manualmente ou via API)
+  targetAlloc  Decimal?   @db.Decimal(5, 2) // % de alocação meta
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  operations InvestOperation[]
+  proventos  Provento[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("investments")
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — Operações de Investimento (Compra / Venda)
+// ─────────────────────────────────────────────────────────────
+
+model InvestOperation {
+  id           String     @id @default(cuid())
+  type         OpType // BUY | SELL
+  quantity     Decimal    @db.Decimal(18, 8)
+  price        Decimal    @db.Decimal(18, 6)
+  fees         Decimal    @default(0) @db.Decimal(15, 2)
+  total        Decimal    @db.Decimal(18, 2) // quantity * price + fees
+  date         DateTime
+  notes        String?
+  investmentId String
+  investment   Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([investmentId])
+  @@map("invest_operations")
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — Proventos (Dividendos, JCP, Rendimentos)
+// ─────────────────────────────────────────────────────────────
+
+model Provento {
+  id            String     @id @default(cuid())
+  type          String // DIVIDEND | JCP | RENDIMENTO | AMORTIZACAO | OUTROS
+  amount        Decimal    @db.Decimal(15, 2)
+  paymentDate   DateTime
+  referenceDate DateTime?
+  notes         String?
+  investmentId  String
+  investment    Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([investmentId])
+  @@map("proventos")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────
+
+enum AccountType {
+  CHECKING    // Conta corrente
+  SAVINGS     // Conta poupança
+  CREDIT_CARD // Cartão de crédito
+  INVESTMENT  // Conta de investimento
+  WALLET      // Carteira / Dinheiro físico
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum AssetClass {
+  FIXED_INCOME    // Renda Fixa
+  STOCKS          // Ações
+  REITS           // FIIs (Fundos Imobiliários)
+  CRYPTO          // Criptomoedas
+  INTERNATIONAL   // Internacional / ETFs
+  OTHER           // Outros
+}
+
+enum OpType {
+  BUY
+  SELL
+}
