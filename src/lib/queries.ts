@@ -427,6 +427,7 @@ export async function getInvestmentsWithCalcs(userId: string) {
       avgPrice,
       currentPrice,
       targetAlloc: inv.targetAlloc !== null ? Number(inv.targetAlloc) : null,
+      priceUpdatedAt: inv.priceUpdatedAt,
       totalCost,
       currentValue,
       result,

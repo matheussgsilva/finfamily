@@ -62,9 +62,10 @@ interface TransactionsClientProps {
   accounts: AccountItem[];
   categories: CategoryItem[];
   members: MemberItem[];
+  renderHeaderAction?: (onSuccess: () => void) => React.ReactNode;
 }
 
-export function TransactionsClient({ accounts, categories, members }: TransactionsClientProps) {
+export function TransactionsClient({ accounts, categories, members, renderHeaderAction }: TransactionsClientProps) {
   const router = useRouter();
   const [monthOffset, setMonthOffset] = useState(0);
   const [type, setType] = useState<string>("");
@@ -140,6 +141,13 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
 
   return (
     <div className="space-y-4">
+      {/* Slot para ação do header (ex: botão nova transação) */}
+      {renderHeaderAction && (
+        <div className="flex justify-end">
+          {renderHeaderAction(fetchTransactions)}
+        </div>
+      )}
+
       {/* Totais do mês */}
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl border border-border bg-card p-4">
@@ -386,6 +394,7 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
         accounts={accounts}
         categories={categories}
         members={members}
+        onSuccess={fetchTransactions}
       />
 
       <ConfirmDialog

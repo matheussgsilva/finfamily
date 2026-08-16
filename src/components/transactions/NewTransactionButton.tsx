@@ -31,10 +31,12 @@ export function NewTransactionButton({
   accounts,
   categories,
   members,
+  onSuccess,
 }: {
   accounts: AccountItem[];
   categories: CategoryItem[];
   members: MemberItem[];
+  onSuccess?: () => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -51,7 +53,9 @@ export function NewTransactionButton({
         accounts={accounts}
         categories={categories}
         members={members}
+        onSuccess={onSuccess}
       />
     </>
   );
 }
+

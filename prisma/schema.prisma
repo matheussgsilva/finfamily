@@ -224,16 +224,18 @@ model Investment {
   ticker       String? // Código do ativo (PETR4, MXRF11, BTC, etc.)
   name         String
   assetClass   AssetClass
-  quantity     Decimal    @default(0) @db.Decimal(18, 8)
-  avgPrice     Decimal    @default(0) @db.Decimal(18, 6) // Preço médio de custo
-  currentPrice Decimal?   @db.Decimal(18, 6) // Preço atual (atualizado manualmente ou via API)
-  targetAlloc  Decimal?   @db.Decimal(5, 2) // % de alocação meta
+  quantity       Decimal    @default(0) @db.Decimal(18, 8)
+  avgPrice       Decimal    @default(0) @db.Decimal(18, 6) // Preço médio de custo
+  currentPrice   Decimal?   @db.Decimal(18, 6) // Preço atual (atualizado manualmente ou via API)
+  targetAlloc    Decimal?   @db.Decimal(5, 2) // % de alocação meta
+  priceUpdatedAt DateTime? // Última atualização do preço atual
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  operations InvestOperation[]
-  proventos  Provento[]
+  operations   InvestOperation[]
+  proventos    Provento[]
+  priceHistory InvestmentPriceHistory[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -282,6 +284,21 @@ model Provento {
 
   @@index([investmentId])
   @@map("proventos")
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — Histórico de preços dos investimentos
+// ─────────────────────────────────────────────────────────────
+
+model InvestmentPriceHistory {
+  id           String     @id @default(cuid())
+  investmentId String
+  investment   Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  price        Decimal    @db.Decimal(18, 6)
+  date         DateTime   @default(now())
+
+  @@index([investmentId, date])
+  @@map("investment_price_history")
 }
 
 // ─────────────────────────────────────────────────────────────

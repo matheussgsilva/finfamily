@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import {
   investmentSchema,
@@ -10,8 +11,14 @@ import {
   type OperationInput,
   type ProventoInput,
 } from "@/lib/validations";
+import { fetchPriceForAsset } from "@/lib/marketData";
 import { getRequiredUserId } from "@/lib/session";
-import type { ActionResult } from "@/types";
+import type { ActionResult, AssetClass } from "@/types";
+
+const priceUpdateSchema = z.object({
+  id: z.string().min(1, "Ativo inválido"),
+  price: z.coerce.number().positive("Preço deve ser maior que zero"),
+});
 
 // ─────────────────────────────────────────────────────────────
 // Ativos
@@ -315,5 +322,113 @@ export async function deleteProvento(id: string): Promise<ActionResult> {
   } catch (error) {
     console.error("Erro ao excluir provento:", error);
     return { success: false, error: "Erro interno ao excluir o provento." };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Atualização de preços (manual + API)
+// ─────────────────────────────────────────────────────────────
+export interface PriceFetchItem {
+  id: string;
+  ticker: string | null;
+  assetClass: AssetClass;
+}
+
+export type PriceFetchResult =
+  | { id: string; status: "ok"; symbol: string; price: number; currency: string }
+  | { id: string; status: "no-ticker"; symbol: null; price: null; currency: null }
+  | { id: string; status: "error"; symbol: null; price: null; currency: null };
+
+export async function fetchInvestmentPrices(
+  assets: PriceFetchItem[]
+): Promise<ActionResult<PriceFetchResult[]>> {
+  try {
+    const userId = await getRequiredUserId();
+    if (!Array.isArray(assets) || assets.length === 0) {
+      return { success: false, error: "Nenhum ativo informado." };
+    }
+
+    const owned = await db.investment.findMany({
+      where: { id: { in: assets.map((a) => a.id) }, userId },
+      select: { id: true },
+    });
+    const ownedIds = new Set(owned.map((o) => o.id));
+
+    const results = await Promise.all(
+      assets
+        .filter((asset) => ownedIds.has(asset.id))
+        .map(async (asset): Promise<PriceFetchResult> => {
+          if (!asset.ticker) {
+            return { id: asset.id, status: "no-ticker", symbol: null, price: null, currency: null };
+          }
+          const quote = await fetchPriceForAsset(asset.ticker, asset.assetClass);
+          if (!quote) {
+            return { id: asset.id, status: "error", symbol: null, price: null, currency: null };
+          }
+          return {
+            id: asset.id,
+            status: "ok",
+            symbol: quote.symbol,
+            price: Number(quote.price.toFixed(6)),
+            currency: quote.currency,
+          };
+        })
+    );
+
+    return { success: true, data: results };
+  } catch (error) {
+    console.error("Erro ao buscar preços:", error);
+    return { success: false, error: "Erro interno ao buscar os preços." };
+  }
+}
+
+export async function updateInvestmentPrices(
+  input: { id: string; price: number }[]
+): Promise<ActionResult<{ updated: number }>> {
+  try {
+    const userId = await getRequiredUserId();
+    if (!Array.isArray(input) || input.length === 0) {
+      return { success: false, error: "Nenhum preço para atualizar." };
+    }
+
+    const entries: { id: string; price: number }[] = [];
+    for (const item of input) {
+      const parsed = priceUpdateSchema.safeParse(item);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos" };
+      }
+      entries.push(parsed.data);
+    }
+
+    const ids = [...new Set(entries.map((e) => e.id))];
+    const owned = await db.investment.findMany({
+      where: { id: { in: ids }, userId },
+      select: { id: true },
+    });
+    const ownedIds = new Set(owned.map((o) => o.id));
+    const valid = entries.filter((e) => ownedIds.has(e.id));
+    if (valid.length === 0) {
+      return { success: false, error: "Ativos não encontrados." };
+    }
+
+    const now = new Date();
+    await db.$transaction(async (tx) => {
+      for (const entry of valid) {
+        await tx.investment.update({
+          where: { id: entry.id },
+          data: { currentPrice: entry.price, priceUpdatedAt: now },
+        });
+        await tx.investmentPriceHistory.create({
+          data: { investmentId: entry.id, price: entry.price, date: now },
+        });
+      }
+    });
+
+    revalidatePath("/investimentos");
+    revalidatePath("/dashboard");
+    return { success: true, data: { updated: valid.length } };
+  } catch (error) {
+    console.error("Erro ao atualizar preços:", error);
+    return { success: false, error: "Erro interno ao atualizar os preços." };
   }
 }

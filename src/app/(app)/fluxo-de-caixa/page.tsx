@@ -48,7 +48,6 @@ export default async function FluxoDeCaixaPage() {
       <PageHeader
         title="Fluxo de Caixa"
         description="Acompanhe e registre todas as movimentações da família."
-        actions={<NewTransactionButton accounts={accountItems} categories={categoryItems} members={memberItems} />}
       />
 
       <Tabs defaultValue="transacoes" className="mb-4">
@@ -60,7 +59,20 @@ export default async function FluxoDeCaixaPage() {
         </TabsList>
       </Tabs>
 
-      <TransactionsClient accounts={accountItems} categories={categoryItems} members={memberItems} />
+      <TransactionsClient
+        accounts={accountItems}
+        categories={categoryItems}
+        members={memberItems}
+        renderHeaderAction={(onSuccess) => (
+          <NewTransactionButton
+            accounts={accountItems}
+            categories={categoryItems}
+            members={memberItems}
+            onSuccess={onSuccess}
+          />
+        )}
+      />
     </div>
   );
 }
+

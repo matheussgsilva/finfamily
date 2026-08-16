@@ -11,6 +11,7 @@ import { createTransaction, updateTransaction } from "@/actions/transaction.acti
 import { useRouter } from "next/navigation";
 import { CategoryIcon } from "@/components/shared/CategoryIcon";
 import { cn } from "@/lib/utils";
+import { DateInputBR } from "@/components/ui/date-input";
 import type { AccountType, TransactionType } from "@/types";
 import type { TransactionWithRelations } from "@/types";
 import {
@@ -64,6 +65,7 @@ interface TransactionFormDialogProps {
   accounts: AccountItem[];
   categories: CategoryItem[];
   members: MemberItem[];
+  onSuccess?: () => void;
 }
 
 const TYPE_OPTIONS: { value: TransactionType; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
@@ -79,6 +81,7 @@ export function TransactionFormDialog({
   accounts,
   categories,
   members,
+  onSuccess,
 }: TransactionFormDialogProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -159,7 +162,11 @@ export function TransactionFormDialog({
       if (res.success) {
         toast.success(transaction ? "Transação atualizada." : "Transação registrada.");
         onOpenChange(false);
-        router.refresh();
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          router.refresh();
+        }
       } else {
         toast.error(res.error);
       }
@@ -237,7 +244,16 @@ export function TransactionFormDialog({
 
             <div>
               <Label>Data</Label>
-              <Input type="date" {...register("date")} />
+              <Controller
+                control={control}
+                name="date"
+                render={({ field }) => (
+                  <DateInputBR
+                    value={typeof field.value === "string" ? field.value : field.value instanceof Date ? field.value.toISOString().split("T")[0] : ""}
+                    onChange={field.onChange}
+                  />
+                )}
+              />
               {errors.date && <p className="mt-1 text-xs text-red-400">{errors.date.message}</p>}
             </div>
 

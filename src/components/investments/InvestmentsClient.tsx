@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Coins,
   Briefcase,
+  RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { queryInvestmentDetail } from "@/actions/query.actions";
@@ -21,6 +22,7 @@ import { ASSET_CLASS_LABELS, ASSET_CLASS_COLORS, type AssetClass } from "@/types
 import { InvestmentFormDialog } from "./InvestmentFormDialog";
 import { OperationFormDialog } from "./OperationFormDialog";
 import { ProventoFormDialog } from "./ProventoFormDialog";
+import { PriceUpdateDialog } from "./PriceUpdateDialog";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PrivacyValue } from "@/components/shared/PrivacyValue";
@@ -35,6 +37,7 @@ interface AssetWithCalcs {
   avgPrice: number;
   currentPrice: number | null;
   targetAlloc: number | null;
+  priceUpdatedAt: Date | null;
   totalCost: number;
   currentValue: number;
   result: number;
@@ -108,6 +111,7 @@ export function InvestmentsClient({
   const [deleting, setDeleting] = useState<AssetWithCalcs | null>(null);
   const [opTarget, setOpTarget] = useState<AssetWithCalcs | null>(null);
   const [proventoTarget, setProventoTarget] = useState<AssetWithCalcs | null>(null);
+  const [priceOpen, setPriceOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, DetailData>>({});
   const [detailLoading, setDetailLoading] = useState<string | null>(null);
@@ -272,7 +276,16 @@ export function InvestmentsClient({
       </div>
 
       {/* Lista de ativos */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setPriceOpen(true)}
+          disabled={assets.length === 0}
+        >
+          <RefreshCw size={16} />
+          Atualizar preços
+        </Button>
         <Button
           size="sm"
           onClick={() => {
@@ -325,7 +338,11 @@ export function InvestmentsClient({
                       {asset.ticker ?? asset.name}
                     </p>
                     <p className="text-xs text-zinc-500">
-                      {ASSET_CLASS_LABELS[asset.assetClass]} · {asset.quantity.toLocaleString("pt-BR")} un.
+                      {ASSET_CLASS_LABELS[asset.assetClass]} ·{" "}
+                      {asset.quantity.toLocaleString("pt-BR")} un.
+                      {asset.priceUpdatedAt && (
+                        <> · preço atualizado {format(asset.priceUpdatedAt, "dd/MM/yyyy")}</>
+                      )}
                     </p>
                   </div>
                   <div className="text-right shrink-0 hidden sm:block">
@@ -485,6 +502,12 @@ export function InvestmentsClient({
         open={!!proventoTarget}
         onOpenChange={(open) => !open && setProventoTarget(null)}
         investment={proventoTarget ? { id: proventoTarget.id, name: proventoTarget.name, ticker: proventoTarget.ticker } : null}
+      />
+
+      <PriceUpdateDialog
+        open={priceOpen}
+        onOpenChange={setPriceOpen}
+        assets={assets}
       />
 
       <ConfirmDialog

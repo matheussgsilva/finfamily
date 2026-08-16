@@ -80,6 +80,7 @@ export interface InvestmentWithCalcs {
   avgPrice: number;
   currentPrice: number | null;
   targetAlloc: number | null;
+  priceUpdatedAt: Date | null;
   // Calculados
   totalCost: number;            // quantity * avgPrice
   currentValue: number;         // quantity * currentPrice
