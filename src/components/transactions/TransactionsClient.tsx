@@ -1,28 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  Pencil,
-  Trash2,
-  Receipt,
-  Repeat,
-  Layers,
-} from "lucide-react";
-import { useRouter } from "next/navigation";
-import { format, addMonths } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { queryTransactions } from "@/actions/query.actions";
 import { deleteTransaction } from "@/actions/transaction.actions";
-import { formatCurrency, formatDate } from "@/lib/utils";
-import {
-  type AccountType,
-  type TransactionType,
-  type TransactionWithRelations,
-} from "@/types";
-import { TransactionFormDialog } from "./TransactionFormDialog";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PrivacyValue } from "@/components/shared/PrivacyValue";
@@ -35,7 +14,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import {
+  type AccountType,
+  type TransactionType,
+  type TransactionWithRelations,
+} from "@/types";
+import { addMonths, format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  Pencil,
+  Receipt,
+  Repeat,
+  Search,
+  Trash2,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { NewTransactionButton } from "./NewTransactionButton";
+import { TransactionFormDialog } from "./TransactionFormDialog";
 
 interface CategoryItem {
   id: string;
@@ -62,10 +62,9 @@ interface TransactionsClientProps {
   accounts: AccountItem[];
   categories: CategoryItem[];
   members: MemberItem[];
-  renderHeaderAction?: (onSuccess: () => void) => React.ReactNode;
 }
 
-export function TransactionsClient({ accounts, categories, members, renderHeaderAction }: TransactionsClientProps) {
+export function TransactionsClient({ accounts, categories, members }: TransactionsClientProps) {
   const router = useRouter();
   const [monthOffset, setMonthOffset] = useState(0);
   const [type, setType] = useState<string>("");
@@ -141,12 +140,15 @@ export function TransactionsClient({ accounts, categories, members, renderHeader
 
   return (
     <div className="space-y-4">
-      {/* Slot para ação do header (ex: botão nova transação) */}
-      {renderHeaderAction && (
-        <div className="flex justify-end">
-          {renderHeaderAction(fetchTransactions)}
-        </div>
-      )}
+      {/* Ação do header (botão nova transação) */}
+      <div className="flex justify-end">
+        <NewTransactionButton
+          accounts={accounts}
+          categories={categories}
+          members={members}
+          onSuccess={fetchTransactions}
+        />
+      </div>
 
       {/* Totais do mês */}
       <div className="grid grid-cols-2 gap-3">

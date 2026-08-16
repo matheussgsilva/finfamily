@@ -1,12 +1,10 @@
-import React from "react";
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { TransactionsClient } from "@/components/transactions/TransactionsClient";
-import { NewTransactionButton } from "@/components/transactions/NewTransactionButton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import Link from "next/link";
+import { redirect } from "next/navigation";
 
 export default async function FluxoDeCaixaPage() {
   const session = await auth();
@@ -63,16 +61,7 @@ export default async function FluxoDeCaixaPage() {
         accounts={accountItems}
         categories={categoryItems}
         members={memberItems}
-        renderHeaderAction={(onSuccess) => (
-          <NewTransactionButton
-            accounts={accountItems}
-            categories={categoryItems}
-            members={memberItems}
-            onSuccess={onSuccess}
-          />
-        )}
       />
     </div>
   );
 }
-
