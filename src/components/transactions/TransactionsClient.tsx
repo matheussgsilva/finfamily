@@ -267,11 +267,11 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
         ) : (
           <div>
             {/* Header desktop */}
-            <div className="hidden md:grid grid-cols-[1.5fr_3fr_2fr_1fr_1.5fr] gap-4 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 border-b border-border">
-              <span>Data</span>
+            <div className="hidden md:grid grid-cols-[3fr_2fr_1.5fr_1.5fr_1.5fr] gap-4 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 border-b border-border">
               <span>Descrição</span>
               <span>Categoria</span>
               <span>Conta</span>
+              <span>Observação</span>
               <span className="text-right">Valor</span>
             </div>
 
@@ -286,7 +286,7 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
                   return (
                     <div
                       key={tx.id}
-                      className="group flex flex-col md:grid md:grid-cols-[1.5fr_3fr_2fr_1fr_1.5fr] md:items-center gap-1 md:gap-4 px-4 py-3 border-b border-border/50 hover:bg-zinc-900/50 transition last:border-b-0"
+                      className="group flex flex-col md:grid md:grid-cols-[3fr_2fr_1.5fr_1.5fr_1.5fr] md:items-center gap-1 md:gap-4 px-4 py-3 border-b border-border/50 hover:bg-zinc-900/50 transition last:border-b-0"
                     >
                       {/* Data (mobile) */}
                       <span className="md:hidden text-xs text-zinc-500">
@@ -345,6 +345,11 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
                         {tx.destinationAccount && (
                           <span className="text-zinc-600"> → {tx.destinationAccount.name}</span>
                         )}
+                      </div>
+
+                      {/* Observação */}
+                      <div className="hidden md:block text-sm text-zinc-500 truncate">
+                        {tx.notes || <span className="text-zinc-600">—</span>}
                       </div>
 
                       {/* Valor + ações */}
