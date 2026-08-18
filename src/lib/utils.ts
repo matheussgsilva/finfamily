@@ -31,20 +31,19 @@ export function formatPercent(value: number | null | undefined, decimals = 2): s
   }).format(num / 100);
 }
 
-/**
- * Formata uma data para o padrão brasileiro
- */
 export function formatDate(date: Date | string | null | undefined, format: "short" | "long" | "month" = "short"): string {
   if (!date) return "—";
+  
+  // Se for string apenas com "YYYY-MM-DD", o new Date() assume UTC (ex: "2026-08-18" -> "2026-08-18T00:00:00.000Z")
   const d = typeof date === "string" ? new Date(date) : date;
 
   if (format === "month") {
-    return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(d);
+    return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
   }
   if (format === "long") {
-    return new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(d);
+    return new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeZone: "UTC" }).format(d);
   }
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(d);
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: "UTC" }).format(d);
 }
 
 /**

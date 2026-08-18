@@ -91,8 +91,8 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
     const id = ++requestId.current;
     setLoading(true);
     try {
-      const start = new Date(activeMonth.getFullYear(), activeMonth.getMonth(), 1);
-      const end = new Date(activeMonth.getFullYear(), activeMonth.getMonth() + 1, 0);
+      const start = new Date(Date.UTC(activeMonth.getFullYear(), activeMonth.getMonth(), 1));
+      const end = new Date(Date.UTC(activeMonth.getFullYear(), activeMonth.getMonth() + 1, 0, 23, 59, 59, 999));
       const data = await queryTransactions({
         startDate: start,
         endDate: end,
@@ -131,7 +131,8 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
   const groupByDate = useMemo(() => {
     const groups = new Map<string, TransactionWithRelations[]>();
     for (const tx of transactions) {
-      const key = new Date(tx.date).toDateString();
+      const d = typeof tx.date === "string" ? new Date(tx.date) : tx.date;
+      const key = d.toISOString().split("T")[0];
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(tx);
     }

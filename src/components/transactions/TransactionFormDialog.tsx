@@ -11,6 +11,7 @@ import { createTransaction, updateTransaction } from "@/actions/transaction.acti
 import { useRouter } from "next/navigation";
 import { CategoryIcon } from "@/components/shared/CategoryIcon";
 import { cn } from "@/lib/utils";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateInputBR } from "@/components/ui/date-input";
 import type { AccountType, TransactionType } from "@/types";
 import type { TransactionWithRelations } from "@/types";
@@ -118,9 +119,11 @@ export function TransactionFormDialog({
         amount: transaction?.amount ?? undefined,
         type: transaction?.type ?? "EXPENSE",
         date: (() => {
-          const d = transaction?.date
-            ? new Date(transaction.date)
-            : new Date();
+          if (transaction?.date) {
+            const d = typeof transaction.date === "string" ? new Date(transaction.date) : transaction.date;
+            return d.toISOString().split("T")[0] as unknown as Date;
+          }
+          const d = new Date();
           return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
             d.getDate()
           ).padStart(2, "0")}` as unknown as Date;
@@ -238,7 +241,19 @@ export function TransactionFormDialog({
 
             <div>
               <Label>Valor</Label>
-              <Input type="number" step="0.01" min="0" placeholder="0,00" {...register("amount")} />
+              <Controller
+                control={control}
+                name="amount"
+                render={({ field }) => (
+                  <CurrencyInput
+                    placeholder="0,00"
+                    value={field.value as number | undefined}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                  />
+                )}
+              />
               {errors.amount && <p className="mt-1 text-xs text-red-400">{errors.amount.message}</p>}
             </div>
 
