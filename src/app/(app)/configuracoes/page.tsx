@@ -6,15 +6,20 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { AccountsSection } from "@/components/settings/AccountsSection";
 import { CategoriesSection } from "@/components/settings/CategoriesSection";
 import { MembersSection } from "@/components/settings/MembersSection";
+import { ProfileSection } from "@/components/settings/ProfileSection";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, Tags, Users } from "lucide-react";
+import { Building2, Tags, Users, User as UserIcon } from "lucide-react";
 
 export default async function ConfiguracoesPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
 
-  const [accounts, categories, members] = await Promise.all([
+  const [userProfile, accounts, categories, members] = await Promise.all([
+    db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true }
+    }),
     db.bankAccount.findMany({
       where: { userId },
       orderBy: [{ type: "asc" }, { name: "asc" }],
@@ -39,8 +44,12 @@ export default async function ConfiguracoesPage() {
         description="Gerencie suas contas, categorias e membros da família."
       />
 
-      <Tabs defaultValue="contas">
-        <TabsList className="w-full sm:w-auto grid grid-cols-3">
+      <Tabs defaultValue="perfil">
+        <TabsList className="w-full sm:w-auto grid grid-cols-4">
+          <TabsTrigger value="perfil" className="flex items-center gap-2">
+            <UserIcon size={15} />
+            Perfil
+          </TabsTrigger>
           <TabsTrigger value="contas" className="flex items-center gap-2">
             <Building2 size={15} />
             Contas
@@ -55,6 +64,9 @@ export default async function ConfiguracoesPage() {
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="perfil">
+          {userProfile && <ProfileSection user={userProfile} />}
+        </TabsContent>
         <TabsContent value="contas">
           <AccountsSection accounts={accountItems} />
         </TabsContent>

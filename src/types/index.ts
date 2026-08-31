@@ -9,7 +9,7 @@ export type { AccountType, AssetClass, CategoryType, TransactionType, OpType };
 // Tipos de resposta de Server Actions
 // ─────────────────────────────────────────────────────────────
 export type ActionResult<T = void> =
-  | { success: true; data?: T }
+  | { success: true; data?: T; budgetAlert?: string }
   | { success: false; error: string };
 
 // ─────────────────────────────────────────────────────────────

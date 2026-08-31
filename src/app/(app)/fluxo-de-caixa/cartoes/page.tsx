@@ -4,46 +4,47 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { BudgetsClient } from "@/components/budgets/BudgetsClient";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CreditCardsClient } from "@/components/credit-cards/CreditCardsClient";
 
-export default async function OrcamentosPage() {
+export default async function CartoesPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
 
-  const expenseCategories = await db.category.findMany({
-    where: { type: "EXPENSE", OR: [{ userId }, { userId: null }] },
+  const creditCards = await db.bankAccount.findMany({
+    where: { userId, type: "CREDIT_CARD" },
     orderBy: { name: "asc" },
   });
 
-  const categoryItems = expenseCategories.map((c) => ({
+  const cardItems = creditCards.map((c) => ({
     id: c.id,
     name: c.name,
-    icon: c.icon,
     color: c.color,
+    closingDay: c.closingDay,
+    dueDay: c.dueDay,
   }));
 
   return (
     <div>
       <PageHeader
-        title="Orçamentos"
-        description="Defina limites mensais de gastos por categoria."
+        title="Faturas de Cartão"
+        description="Acompanhe e pague as faturas dos seus cartões de crédito."
       />
 
-      <Tabs defaultValue="orcamentos" className="mb-4">
+      <Tabs defaultValue="cartoes" className="mb-4">
         <TabsList>
           <TabsTrigger value="transacoes">
             <Link href="/fluxo-de-caixa">Transações</Link>
           </TabsTrigger>
-          <TabsTrigger value="orcamentos">Orçamentos</TabsTrigger>
-          <TabsTrigger value="cartoes">
-            <Link href="/fluxo-de-caixa/cartoes">Faturas</Link>
+          <TabsTrigger value="orcamentos">
+            <Link href="/fluxo-de-caixa/orcamentos">Orçamentos</Link>
           </TabsTrigger>
+          <TabsTrigger value="cartoes">Faturas</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      <BudgetsClient categories={categoryItems} />
+      <CreditCardsClient creditCards={cardItems} />
     </div>
   );
 }

@@ -163,7 +163,11 @@ export function TransactionFormDialog({
         ? await updateTransaction(transaction.id, input)
         : await createTransaction(input);
       if (res.success) {
-        toast.success(transaction ? "Transação atualizada." : "Transação registrada.");
+        if (res.budgetAlert) {
+          toast.warning(res.budgetAlert, { duration: 6000 });
+        } else {
+          toast.success(transaction ? "Transação atualizada." : "Transação registrada.");
+        }
         onOpenChange(false);
         if (onSuccess) {
           onSuccess();

@@ -5,7 +5,48 @@ import { db } from "@/lib/db";
 import { transactionSchema, type TransactionInput } from "@/lib/validations";
 import { getRequiredUserId } from "@/lib/session";
 import type { ActionResult } from "@/types";
-import { addMonths } from "date-fns";
+import { addMonths, startOfMonth, endOfMonth } from "date-fns";
+
+async function checkBudget(userId: string, categoryId: string | null, date: Date): Promise<string | undefined> {
+  if (!categoryId) return undefined;
+  
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear();
+
+  const budget = await db.budget.findFirst({
+    where: { userId, categoryId, month, year },
+    include: { category: true }
+  });
+
+  if (!budget) return undefined;
+
+  const start = startOfMonth(date);
+  const end = endOfMonth(date);
+
+  const expenses = await db.transaction.aggregate({
+    where: {
+      userId,
+      categoryId,
+      type: "EXPENSE",
+      date: { gte: start, lte: end }
+    },
+    _sum: { amount: true }
+  });
+
+  const spent = Number(expenses._sum.amount || 0);
+  const limit = Number(budget.amount);
+
+  if (spent > limit) {
+    const formatBRL = (val: number) => val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    return `Atenção: Você ultrapassou o orçamento de ${budget.category.name} em ${formatBRL(spent - limit)}.`;
+  }
+  
+  if (spent >= limit * 0.9) {
+    return `Aviso: Você já utilizou ${Math.round((spent/limit)*100)}% do orçamento de ${budget.category.name}.`;
+  }
+
+  return undefined;
+}
 
 export async function createTransaction(input: TransactionInput): Promise<ActionResult> {
   try {
@@ -105,7 +146,13 @@ export async function createTransaction(input: TransactionInput): Promise<Action
 
     revalidatePath("/fluxo-de-caixa");
     revalidatePath("/dashboard");
-    return { success: true };
+    
+    let budgetAlert = undefined;
+    if (data.type === "EXPENSE") {
+      budgetAlert = await checkBudget(userId, data.categoryId ?? null, data.date);
+    }
+    
+    return { success: true, budgetAlert };
   } catch (error) {
     console.error("Erro ao criar transação:", error);
     return { success: false, error: "Erro interno ao criar a transação." };
@@ -167,7 +214,13 @@ export async function updateTransaction(
 
     revalidatePath("/fluxo-de-caixa");
     revalidatePath("/dashboard");
-    return { success: true };
+    
+    let budgetAlert = undefined;
+    if (data.type === "EXPENSE") {
+      budgetAlert = await checkBudget(userId, data.categoryId ?? null, data.date);
+    }
+
+    return { success: true, budgetAlert };
   } catch (error) {
     console.error("Erro ao atualizar transação:", error);
     return { success: false, error: "Erro interno ao atualizar a transação." };

@@ -54,6 +54,9 @@ export default async function FluxoDeCaixaPage() {
           <TabsTrigger value="orcamentos">
             <Link href="/fluxo-de-caixa/orcamentos">Orçamentos</Link>
           </TabsTrigger>
+          <TabsTrigger value="cartoes">
+            <Link href="/fluxo-de-caixa/cartoes">Faturas</Link>
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
