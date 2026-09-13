@@ -6,7 +6,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 const loginSchema = z.object({
@@ -128,18 +127,6 @@ export default function LoginPage() {
           )}
         </button>
       </form>
-
-      <div className="mt-6 text-center">
-        <p className="text-sm text-zinc-500">
-          Não tem uma conta?{" "}
-          <Link
-            href="/register"
-            className="text-indigo-400 hover:text-indigo-300 font-semibold transition"
-          >
-            Cadastre-se grátis
-          </Link>
-        </p>
-      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import "dotenv/config";
+import bcrypt from "bcryptjs";
 import { Pool } from "pg";
 import { PrismaClient } from "../src/generated/prisma";
 
@@ -61,6 +62,58 @@ async function main() {
 
   console.log(`   ✅ ${systemCategories.length} categorias criadas\n`);
 
+  // ─────────────────────────────────────────────────────────────
+  // Usuário dono da aplicação (app de uso pessoal, sem cadastro público)
+  // ─────────────────────────────────────────────────────────────
+  console.log("👤 Verificando usuário dono da aplicação...");
+
+  const ownerName = process.env.SEED_USER_NAME;
+  const ownerEmail = process.env.SEED_USER_EMAIL;
+  const ownerPassword = process.env.SEED_USER_PASSWORD;
+
+  if (!ownerName || !ownerEmail || !ownerPassword) {
+    console.log(
+      "   ⚠️  SEED_USER_NAME/SEED_USER_EMAIL/SEED_USER_PASSWORD não definidos — pulando criação do usuário.\n"
+    );
+  } else {
+    const existingUser = await prisma.user.findUnique({ where: { email: ownerEmail } });
+
+    if (existingUser) {
+      console.log(`   ℹ️  Usuário ${ownerEmail} já existe, pulando criação.\n`);
+    } else {
+      const hashedPassword = await bcrypt.hash(ownerPassword, 12);
+
+      await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            name: ownerName,
+            email: ownerEmail,
+            password: hashedPassword,
+          },
+        });
+
+        await tx.familyMember.create({
+          data: {
+            name: ownerName.split(" ")[0] || "Titular",
+            color: "#6366f1",
+            userId: user.id,
+          },
+        });
+
+        await tx.bankAccount.create({
+          data: {
+            name: "Carteira",
+            type: "WALLET",
+            balance: 0,
+            color: "#10b981",
+            userId: user.id,
+          },
+        });
+      });
+
+      console.log(`   ✅ Usuário ${ownerEmail} criado\n`);
+    }
+  }
 }
 main()
   .catch((e) => {

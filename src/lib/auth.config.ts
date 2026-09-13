@@ -9,7 +9,7 @@ export const authConfig = {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
       const isApiAuthRoute = nextUrl.pathname.startsWith("/api/auth");
-      const isAuthRoute = nextUrl.pathname.startsWith("/login") || nextUrl.pathname.startsWith("/register");
+      const isAuthRoute = nextUrl.pathname.startsWith("/login");
       const isPublicRoute = nextUrl.pathname === "/";
 
       if (isApiAuthRoute) {
