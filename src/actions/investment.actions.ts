@@ -12,6 +12,7 @@ import {
   type ProventoInput,
 } from "@/lib/validations";
 import { fetchPriceForAsset } from "@/lib/marketData";
+import { applyOperation, revertOperation } from "@/lib/investmentMath";
 import { getRequiredUserId } from "@/lib/session";
 import type { ActionResult, AssetClass } from "@/types";
 
@@ -168,31 +169,16 @@ export async function createOperation(
         },
       });
 
-      const currentQty = Number(investment.quantity);
-      const currentAvg = Number(investment.avgPrice);
-      const qty = Number(data.quantity);
-      const price = Number(data.price);
-
-      let newQty: number;
-      let newAvg: number;
-
-      if (data.type === "BUY") {
-        newQty = currentQty + qty;
-        const costTotal = currentQty * currentAvg + qty * price + Number(data.fees);
-        newAvg = newQty > 0 ? costTotal / newQty : 0;
-      } else {
-        if (qty > currentQty) {
-          throw new Error("Quantidade de venda maior que a posição atual.");
-        }
-        newQty = currentQty - qty;
-        newAvg = currentAvg;
-      }
+      const newPosition = applyOperation(
+        { quantity: Number(investment.quantity), avgPrice: Number(investment.avgPrice) },
+        { type: data.type, quantity: Number(data.quantity), price: Number(data.price), fees: Number(data.fees) }
+      );
 
       await tx.investment.update({
         where: { id: investmentId },
         data: {
-          quantity: newQty,
-          avgPrice: newAvg,
+          quantity: newPosition.quantity,
+          avgPrice: newPosition.avgPrice,
         },
       });
     });
@@ -227,27 +213,14 @@ export async function deleteOperation(id: string): Promise<ActionResult> {
     }
 
     await db.$transaction(async (tx) => {
-      const currentQty = Number(investment.quantity);
-      const currentAvg = Number(investment.avgPrice);
-      const qty = Number(op.quantity);
-      const price = Number(op.price);
-
-      let newQty: number;
-      let newAvg: number;
-
-      if (op.type === "BUY") {
-        newQty = currentQty - qty;
-        const totalInvested = currentQty * currentAvg;
-        const removedValue = qty * currentAvg;
-        newAvg = newQty > 0 ? (totalInvested - removedValue) / newQty : 0;
-      } else {
-        newQty = currentQty + qty;
-        newAvg = currentAvg;
-      }
+      const newPosition = revertOperation(
+        { quantity: Number(investment.quantity), avgPrice: Number(investment.avgPrice) },
+        { type: op.type, quantity: Number(op.quantity) }
+      );
 
       await tx.investment.update({
         where: { id: op.investmentId },
-        data: { quantity: newQty, avgPrice: newAvg },
+        data: { quantity: newPosition.quantity, avgPrice: newPosition.avgPrice },
       });
 
       await tx.investOperation.delete({ where: { id } });
