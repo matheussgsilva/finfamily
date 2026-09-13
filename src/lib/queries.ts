@@ -94,6 +94,10 @@ export async function getTransactions(
       familyMember: { select: { id: true, name: true, color: true } },
     },
     orderBy: { date: "desc" },
+    // Cap de segurança, não paginação real: o único chamador (TransactionsClient)
+    // sempre filtra por um mês, então >200 transações em um único mês nunca acontece
+    // em uso pessoal. Se um dia este filtro virar "todo o período" sem startDate/endDate,
+    // isso precisa de paginação de verdade.
     take: 200,
   });
 
@@ -108,16 +112,23 @@ export async function getTransactions(
 // Saldo das contas (calculado: saldo inicial + movimentações)
 // ─────────────────────────────────────────────────────────────
 export async function getAccountBalances(userId: string) {
-  const [accounts, transactions] = await Promise.all([
+  // Soma por conta de origem: INCOME soma, EXPENSE e TRANSFER subtraem.
+  // Transferências sem destinationAccountId são ignoradas (dado inconsistente,
+  // mesmo comportamento defensivo que existia no cálculo em memória).
+  const [accounts, outgoing, incoming] = await Promise.all([
     db.bankAccount.findMany({ where: { userId } }),
-    db.transaction.findMany({
-      where: { userId },
-      select: {
-        bankAccountId: true,
-        destinationAccountId: true,
-        type: true,
-        amount: true,
+    db.transaction.groupBy({
+      by: ["bankAccountId", "type"],
+      where: {
+        userId,
+        OR: [{ type: { not: "TRANSFER" } }, { type: "TRANSFER", destinationAccountId: { not: null } }],
       },
+      _sum: { amount: true },
+    }),
+    db.transaction.groupBy({
+      by: ["destinationAccountId"],
+      where: { userId, type: "TRANSFER", destinationAccountId: { not: null } },
+      _sum: { amount: true },
     }),
   ]);
 
@@ -126,21 +137,19 @@ export async function getAccountBalances(userId: string) {
     balanceMap.set(acc.id, Number(acc.balance));
   }
 
-  for (const tx of transactions) {
-    const amount = Number(tx.amount);
-    if (tx.type === "INCOME") {
-      balanceMap.set(tx.bankAccountId, (balanceMap.get(tx.bankAccountId) ?? 0) + amount);
-    } else if (tx.type === "EXPENSE") {
-      balanceMap.set(tx.bankAccountId, (balanceMap.get(tx.bankAccountId) ?? 0) - amount);
-    } else if (tx.type === "TRANSFER") {
-      if (tx.destinationAccountId) {
-        balanceMap.set(tx.bankAccountId, (balanceMap.get(tx.bankAccountId) ?? 0) - amount);
-        balanceMap.set(
-          tx.destinationAccountId,
-          (balanceMap.get(tx.destinationAccountId) ?? 0) + amount
-        );
-      }
-    }
+  for (const row of outgoing) {
+    const amount = Number(row._sum.amount ?? 0);
+    const delta = row.type === "INCOME" ? amount : -amount;
+    balanceMap.set(row.bankAccountId, (balanceMap.get(row.bankAccountId) ?? 0) + delta);
+  }
+
+  for (const row of incoming) {
+    if (!row.destinationAccountId) continue;
+    const amount = Number(row._sum.amount ?? 0);
+    balanceMap.set(
+      row.destinationAccountId,
+      (balanceMap.get(row.destinationAccountId) ?? 0) + amount
+    );
   }
 
   return accounts.map((acc) => ({
