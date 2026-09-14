@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, CreditCard } from "lucide-react";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { getCreditCardInvoice } from "@/actions/credit-card.actions";
+import { getCreditCardInvoice, type CreditCardInvoiceData } from "@/actions/credit-card.actions";
 import { formatCurrency } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PrivacyValue } from "@/components/shared/PrivacyValue";
@@ -23,35 +23,31 @@ interface CreditCardItem {
 export function CreditCardsClient({ creditCards }: { creditCards: CreditCardItem[] }) {
   const [selectedCardId, setSelectedCardId] = useState<string>(creditCards[0]?.id || "");
   const [monthOffset, setMonthOffset] = useState(0);
-  const [invoiceData, setInvoiceData] = useState<any>(null);
+  const [invoiceData, setInvoiceData] = useState<CreditCardInvoiceData | null>(null);
   const [loading, setLoading] = useState(false);
+  const requestId = useRef(0);
 
   const activeMonth = addMonths(new Date(), monthOffset);
   const month = activeMonth.getMonth() + 1;
   const year = activeMonth.getFullYear();
 
-  useEffect(() => {
+  const fetchInvoice = useCallback(async () => {
     if (!selectedCardId) return;
-
-    let cancelled = false;
+    const id = ++requestId.current;
     setLoading(true);
-    
-    getCreditCardInvoice(selectedCardId, month, year)
-      .then((res) => {
-        if (!cancelled && res.success) {
-          setInvoiceData(res.data);
-        } else if (!cancelled) {
-          setInvoiceData(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const res = await getCreditCardInvoice(selectedCardId, month, year);
+      if (id === requestId.current) {
+        setInvoiceData(res.success ? (res.data ?? null) : null);
+      }
+    } finally {
+      if (id === requestId.current) setLoading(false);
+    }
   }, [selectedCardId, month, year]);
+
+  useEffect(() => {
+    fetchInvoice();
+  }, [fetchInvoice]);
 
   if (creditCards.length === 0) {
     return (
@@ -64,8 +60,6 @@ export function CreditCardsClient({ creditCards }: { creditCards: CreditCardItem
       </div>
     );
   }
-
-  const selectedCard = creditCards.find((c) => c.id === selectedCardId);
 
   return (
     <div className="space-y-4">
@@ -151,7 +145,7 @@ export function CreditCardsClient({ creditCards }: { creditCards: CreditCardItem
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {invoiceData.transactions.map((t: any) => (
+                {invoiceData.transactions.map((t) => (
                   <div key={t.id} className="p-4 flex items-center justify-between hover:bg-zinc-800/30 transition-colors">
                     <div className="flex items-center gap-3">
                       <div

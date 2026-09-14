@@ -2,9 +2,24 @@
 
 import { db } from "@/lib/db";
 import { getRequiredUserId } from "@/lib/session";
-import { endOfDay, startOfDay } from "date-fns";
+import { calculateInvoiceTotal, getInvoicePeriod } from "@/lib/creditCardMath";
+import type { Prisma } from "@/generated/prisma";
+import type { ActionResult } from "@/types";
 
-export async function getCreditCardInvoice(accountId: string, month: number, year: number) {
+export interface CreditCardInvoiceData {
+  transactions: Prisma.TransactionGetPayload<{ include: { category: true } }>[];
+  total: number;
+  startDate: Date;
+  endDate: Date;
+  closingDay: number;
+  dueDay: number | null;
+}
+
+export async function getCreditCardInvoice(
+  accountId: string,
+  month: number,
+  year: number
+): Promise<ActionResult<CreditCardInvoiceData>> {
   try {
     const userId = await getRequiredUserId();
     const account = await db.bankAccount.findFirst({
@@ -15,15 +30,7 @@ export async function getCreditCardInvoice(accountId: string, month: number, yea
       return { success: false, error: "Cartão não encontrado." };
     }
 
-    const closingDay = account.closingDay || 1;
-
-    // Fatura do mês X fecha no dia closingDay do mês X.
-    // Ex: Fatura de Setembro (Mês 9) fecha em 05/09.
-    // As compras vão de 06/08 até 05/09.
-    
-    // Meses no JS são 0-indexed (0 = Jan, 8 = Set)
-    const startDate = startOfDay(new Date(year, month - 2, closingDay + 1));
-    const endDate = endOfDay(new Date(year, month - 1, closingDay));
+    const { startDate, endDate } = getInvoicePeriod(month, year, account.closingDay);
 
     const transactions = await db.transaction.findMany({
       where: {
@@ -40,12 +47,7 @@ export async function getCreditCardInvoice(accountId: string, month: number, yea
       orderBy: { date: "desc" },
     });
 
-    const total = transactions.reduce((acc, t) => {
-      // Entradas na fatura (pagamento da fatura) reduzem o valor, despesas aumentam
-      if (t.type === "EXPENSE") return acc + Number(t.amount);
-      if (t.type === "INCOME" || t.type === "TRANSFER") return acc - Number(t.amount);
-      return acc;
-    }, 0);
+    const total = calculateInvoiceTotal(transactions.map((t) => ({ type: t.type, amount: Number(t.amount) })));
 
     return {
       success: true,
@@ -54,7 +56,7 @@ export async function getCreditCardInvoice(accountId: string, month: number, yea
         total,
         startDate,
         endDate,
-        closingDay,
+        closingDay: account.closingDay || 1,
         dueDay: account.dueDay,
       },
     };

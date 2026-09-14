@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { transactionSchema, type TransactionInput } from "@/lib/validations";
 import { getRequiredUserId } from "@/lib/session";
+import { getBudgetAlertMessage } from "@/lib/budgetMath";
 import type { ActionResult } from "@/types";
 import { addMonths, startOfMonth, endOfMonth } from "date-fns";
 
@@ -36,16 +37,7 @@ async function checkBudget(userId: string, categoryId: string | null, date: Date
   const spent = Number(expenses._sum.amount || 0);
   const limit = Number(budget.amount);
 
-  if (spent > limit) {
-    const formatBRL = (val: number) => val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    return `Atenção: Você ultrapassou o orçamento de ${budget.category.name} em ${formatBRL(spent - limit)}.`;
-  }
-  
-  if (spent >= limit * 0.9) {
-    return `Aviso: Você já utilizou ${Math.round((spent/limit)*100)}% do orçamento de ${budget.category.name}.`;
-  }
-
-  return undefined;
+  return getBudgetAlertMessage(budget.category.name, spent, limit);
 }
 
 export async function createTransaction(input: TransactionInput): Promise<ActionResult> {
