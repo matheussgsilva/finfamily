@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { addMonths, endOfMonth, endOfYear, format, startOfMonth, startOfYear, subMonths } from "date-fns";
 import { computeNextOccurrenceDate } from "@/lib/recurrence";
+import { reconcileOpeningBalance } from "@/lib/netWorthMath";
 import type {
   AllocationData,
   BudgetWithProgress,
@@ -227,7 +228,7 @@ export async function getDashboardKPIs(userId: string): Promise<DashboardKPIs> {
   const monthStart = startOfMonth(now);
 
   const [accounts, monthTx, investments] = await Promise.all([
-    db.bankAccount.findMany({ where: { userId } }),
+    getAccountBalances(userId),
     db.transaction.findMany({
       where: { userId, date: { gte: monthStart } },
       select: { type: true, amount: true, bankAccountId: true },
@@ -235,7 +236,6 @@ export async function getDashboardKPIs(userId: string): Promise<DashboardKPIs> {
     db.investment.findMany({ where: { userId } }),
   ]);
 
-  const balanceMap = new Map(accounts.map((a) => [a.id, Number(a.balance)]));
   let monthIncome = 0;
   let monthExpense = 0;
   let creditCardBalance = 0;
@@ -250,7 +250,11 @@ export async function getDashboardKPIs(userId: string): Promise<DashboardKPIs> {
     }
   }
 
-  const totalBalance = [...balanceMap.values()].reduce((s, v) => s + v, 0);
+  // Cartão de crédito não é saldo disponível (é dívida) — entra no netWorth
+  // separadamente via creditCardBalance, não aqui.
+  const totalBalance = accounts
+    .filter((a) => a.type !== "CREDIT_CARD")
+    .reduce((s, a) => s + a.balance, 0);
   const totalInvested = investments.reduce(
     (s, inv) => s + Number(inv.quantity) * Number(inv.currentPrice ?? inv.avgPrice),
     0
@@ -349,8 +353,8 @@ export async function getNetWorthSeries(userId: string, range: "1M" | "6M" | "1Y
     start = startOfYear(now);
   }
 
-  const [accounts, transactions, investments] = await Promise.all([
-    db.bankAccount.findMany({ where: { userId } }),
+  const [accountBalances, transactions, investments] = await Promise.all([
+    getAccountBalances(userId),
     db.transaction.findMany({
       where: { userId, date: { gte: start } },
       select: { type: true, amount: true, date: true },
@@ -358,7 +362,11 @@ export async function getNetWorthSeries(userId: string, range: "1M" | "6M" | "1Y
     db.investment.findMany({ where: { userId } }),
   ]);
 
-  const openingTotal = accounts.reduce((s, a) => s + Number(a.balance), 0);
+  const currentTotalBalance = accountBalances.reduce((s, a) => s + a.balance, 0);
+  const openingTotal = reconcileOpeningBalance(
+    currentTotalBalance,
+    transactions.map((tx) => ({ type: tx.type, amount: Number(tx.amount) }))
+  );
   const investedValue = investments.reduce(
     (s, inv) => s + Number(inv.quantity) * Number(inv.currentPrice ?? inv.avgPrice),
     0
