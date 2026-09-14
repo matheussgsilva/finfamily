@@ -106,6 +106,27 @@ export interface BudgetWithProgress {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Tipos de Recorrência
+// ─────────────────────────────────────────────────────────────
+export interface RecurringSeriesItem {
+  id: string;
+  description: string;
+  amount: number;
+  type: TransactionType;
+  active: boolean; // isRecurring da transação raiz
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  categoryColor: string | null;
+  bankAccountId: string;
+  bankAccountName: string;
+  bankAccountColor: string;
+  lastDate: Date;
+  nextDate: Date | null; // null quando encerrada
+  occurrenceCount: number; // raiz + ocorrências já geradas
+}
+
+// ─────────────────────────────────────────────────────────────
 // Tipos de Filtros
 // ─────────────────────────────────────────────────────────────
 export interface TransactionFilters {

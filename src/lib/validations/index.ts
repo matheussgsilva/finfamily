@@ -78,6 +78,9 @@ export const transactionSchema = z.object({
     .max(120, "Máximo 120 parcelas")
     .optional()
     .nullable(),
+}).refine((data) => !(data.isRecurring && data.installments && data.installments > 1), {
+  message: "Escolha parcelamento ou recorrência, não os dois.",
+  path: ["isRecurring"],
 });
 
 export type TransactionInput = z.infer<typeof transactionSchema>;

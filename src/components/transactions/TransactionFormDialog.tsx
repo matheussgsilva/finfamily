@@ -390,7 +390,11 @@ export function TransactionFormDialog({
                   min="2"
                   max="120"
                   placeholder="Ex.: 12"
-                  {...register("installments")}
+                  {...register("installments", {
+                    onChange: (e) => {
+                      if (e.target.value) setValue("isRecurring", false);
+                    },
+                  })}
                 />
                 {errors.installments && (
                   <p className="mt-1 text-xs text-red-400">{errors.installments.message}</p>
@@ -411,7 +415,13 @@ export function TransactionFormDialog({
                   control={control}
                   name="isRecurring"
                   render={({ field }) => (
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={(checked) => {
+                        field.onChange(checked);
+                        if (checked) setValue("installments", null);
+                      }}
+                    />
                   )}
                 />
               </div>

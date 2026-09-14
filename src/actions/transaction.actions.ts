@@ -5,10 +5,11 @@ import { db } from "@/lib/db";
 import { transactionSchema, type TransactionInput } from "@/lib/validations";
 import { getRequiredUserId } from "@/lib/session";
 import { getBudgetAlertMessage } from "@/lib/budgetMath";
+import { DEFAULT_RECURRENCE_RULE } from "@/lib/recurrence";
 import type { ActionResult } from "@/types";
 import { addMonths, startOfMonth, endOfMonth } from "date-fns";
 
-async function checkBudget(userId: string, categoryId: string | null, date: Date): Promise<string | undefined> {
+export async function checkBudget(userId: string, categoryId: string | null, date: Date): Promise<string | undefined> {
   if (!categoryId) return undefined;
   
   const month = date.getMonth() + 1;
@@ -125,7 +126,7 @@ export async function createTransaction(input: TransactionInput): Promise<Action
           notes: data.notes ?? null,
           tags: data.tags,
           isRecurring: data.isRecurring,
-          recurrenceRule: data.recurrenceRule ?? null,
+          recurrenceRule: data.isRecurring ? DEFAULT_RECURRENCE_RULE : null,
           categoryId: data.type === "TRANSFER" ? null : (data.categoryId ?? null),
           bankAccountId: data.bankAccountId,
           destinationAccountId:
@@ -195,7 +196,10 @@ export async function updateTransaction(
         notes: data.notes ?? null,
         tags: data.tags,
         isRecurring: data.isRecurring,
-        recurrenceRule: data.recurrenceRule ?? null,
+        // Preserva o marcador de recorrência (mesmo desligando isRecurring) para
+        // que a série continue aparecendo como "encerrada" na tela de Recorrências,
+        // só grava um novo marcador quando o usuário está ligando pela primeira vez.
+        recurrenceRule: data.isRecurring ? DEFAULT_RECURRENCE_RULE : (existing.recurrenceRule ?? null),
         categoryId: data.type === "TRANSFER" ? null : (data.categoryId ?? null),
         bankAccountId: data.bankAccountId,
         destinationAccountId:

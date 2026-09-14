@@ -1,9 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { PrivacyProvider } from "./PrivacyContext";
+import { generateDueRecurringTransactions } from "@/actions/recurrence.actions";
 
 interface AppLayoutClientProps {
   children: React.ReactNode;
@@ -16,6 +19,28 @@ interface AppLayoutClientProps {
 
 export function AppLayoutClient({ children, user }: AppLayoutClientProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    generateDueRecurringTransactions()
+      .then(({ createdCount, budgetAlerts }) => {
+        if (createdCount > 0) {
+          toast.success(
+            createdCount === 1
+              ? "1 transação recorrente foi lançada."
+              : `${createdCount} transações recorrentes foram lançadas.`
+          );
+          router.refresh();
+        }
+        for (const alert of budgetAlerts) {
+          toast.warning(alert, { duration: 6000 });
+        }
+      })
+      .catch(() => {
+        // Falha silenciosa: não é crítico bloquear o app por causa disso.
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <PrivacyProvider>

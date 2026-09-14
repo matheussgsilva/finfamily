@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -19,6 +20,8 @@ interface ConfirmDialogProps {
   title: string;
   description: string;
   actionLabel?: string;
+  icon?: React.ReactNode;
+  variant?: "destructive" | "default";
   onConfirm: () => Promise<{ success: boolean; error?: string }>;
 }
 
@@ -28,6 +31,8 @@ export function ConfirmDialog({
   title,
   description,
   actionLabel = "Excluir",
+  icon,
+  variant = "destructive",
   onConfirm,
 }: ConfirmDialogProps) {
   const [loading, setLoading] = useState(false);
@@ -53,8 +58,8 @@ export function ConfirmDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-red-400">
-            <Trash2 size={18} />
+          <DialogTitle className={cn("flex items-center gap-2", variant === "destructive" ? "text-red-400" : "text-zinc-200")}>
+            {icon ?? <Trash2 size={18} />}
             {title}
           </DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -63,7 +68,7 @@ export function ConfirmDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={handleConfirm} disabled={loading}>
+          <Button variant={variant === "destructive" ? "destructive" : "default"} onClick={handleConfirm} disabled={loading}>
             {loading ? <Loader2 size={16} className="animate-spin" /> : null}
             {actionLabel}
           </Button>

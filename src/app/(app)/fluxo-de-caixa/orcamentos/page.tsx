@@ -40,6 +40,9 @@ export default async function OrcamentosPage() {
           <TabsTrigger value="cartoes">
             <Link href="/fluxo-de-caixa/cartoes">Faturas</Link>
           </TabsTrigger>
+          <TabsTrigger value="recorrencias">
+            <Link href="/fluxo-de-caixa/recorrencias">Recorrências</Link>
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
