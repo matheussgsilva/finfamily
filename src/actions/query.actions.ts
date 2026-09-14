@@ -13,6 +13,7 @@ import {
   getInvestmentDetail,
   getMonthlyCashFlow,
   getNetWorthSeries,
+  getRecurringSeries,
   getTransactions,
 } from "@/lib/queries";
 import { getRequiredUserId } from "@/lib/session";
@@ -81,4 +82,9 @@ export async function queryNetWorth(range: "1M" | "6M" | "1Y" | "ALL") {
 export async function queryInvestmentDetail(investmentId: string) {
   const userId = await getRequiredUserId();
   return getInvestmentDetail(userId, investmentId);
+}
+
+export async function queryRecurringSeries() {
+  const userId = await getRequiredUserId();
+  return getRecurringSeries(userId);
 }

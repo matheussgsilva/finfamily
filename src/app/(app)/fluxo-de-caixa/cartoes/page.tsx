@@ -41,6 +41,9 @@ export default async function CartoesPage() {
             <Link href="/fluxo-de-caixa/orcamentos">Orçamentos</Link>
           </TabsTrigger>
           <TabsTrigger value="cartoes">Faturas</TabsTrigger>
+          <TabsTrigger value="recorrencias">
+            <Link href="/fluxo-de-caixa/recorrencias">Recorrências</Link>
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 

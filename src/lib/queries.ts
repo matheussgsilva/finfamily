@@ -2,11 +2,13 @@ import "server-only";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { addMonths, endOfMonth, endOfYear, format, startOfMonth, startOfYear, subMonths } from "date-fns";
+import { computeNextOccurrenceDate } from "@/lib/recurrence";
 import type {
   AllocationData,
   BudgetWithProgress,
   DashboardKPIs,
   InvestmentWithCalcs,
+  RecurringSeriesItem,
   TransactionFilters,
   TransactionWithRelations,
 } from "@/types";
@@ -543,4 +545,51 @@ export async function getInvestmentDetail(userId: string, investmentId: string) 
       amount: Number(p.amount),
     })),
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Recorrências (transações raiz com recurrenceRule preenchido)
+// ─────────────────────────────────────────────────────────────
+export async function getRecurringSeries(userId: string): Promise<RecurringSeriesItem[]> {
+  const roots = await db.transaction.findMany({
+    where: { userId, parentId: null, recurrenceRule: { not: null } },
+    include: {
+      category: { select: { id: true, name: true, icon: true, color: true } },
+      bankAccount: { select: { id: true, name: true, color: true } },
+    },
+    orderBy: { date: "desc" },
+  });
+
+  if (roots.length === 0) return [];
+
+  const childStats = await db.transaction.groupBy({
+    by: ["parentId"],
+    where: { userId, parentId: { in: roots.map((r) => r.id) } },
+    _max: { date: true },
+    _count: { _all: true },
+  });
+  const statsMap = new Map(childStats.map((s) => [s.parentId as string, s]));
+
+  return roots.map((root) => {
+    const stats = statsMap.get(root.id);
+    const lastDate = stats?._max.date ?? root.date;
+
+    return {
+      id: root.id,
+      description: root.description,
+      amount: Number(root.amount),
+      type: root.type,
+      active: root.isRecurring,
+      categoryId: root.categoryId,
+      categoryName: root.category?.name ?? null,
+      categoryIcon: root.category?.icon ?? null,
+      categoryColor: root.category?.color ?? null,
+      bankAccountId: root.bankAccountId,
+      bankAccountName: root.bankAccount.name,
+      bankAccountColor: root.bankAccount.color,
+      lastDate,
+      nextDate: root.isRecurring ? computeNextOccurrenceDate(lastDate) : null,
+      occurrenceCount: 1 + (stats?._count._all ?? 0),
+    };
+  });
 }
