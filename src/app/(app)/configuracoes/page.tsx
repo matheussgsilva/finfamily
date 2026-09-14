@@ -2,6 +2,7 @@ import React from "react";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getAccountBalances } from "@/lib/queries";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AccountsSection } from "@/components/settings/AccountsSection";
 import { CategoriesSection } from "@/components/settings/CategoriesSection";
@@ -20,10 +21,7 @@ export default async function ConfiguracoesPage() {
       where: { id: userId },
       select: { id: true, name: true, email: true }
     }),
-    db.bankAccount.findMany({
-      where: { userId },
-      orderBy: [{ type: "asc" }, { name: "asc" }],
-    }),
+    getAccountBalances(userId),
     db.category.findMany({
       where: { OR: [{ userId }, { userId: null }] },
       orderBy: [{ type: "asc" }, { name: "asc" }],
@@ -31,11 +29,12 @@ export default async function ConfiguracoesPage() {
     db.familyMember.findMany({ where: { userId }, orderBy: { name: "asc" } }),
   ]);
 
-  const accountItems = accounts.map((a) => ({
-    ...a,
-    balance: Number(a.balance),
-    creditLimit: a.creditLimit !== null ? Number(a.creditLimit) : null,
-  }));
+  const accountItems = accounts
+    .map((a) => ({
+      ...a,
+      creditLimit: a.creditLimit !== null ? Number(a.creditLimit) : null,
+    }))
+    .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
 
   return (
     <div>
