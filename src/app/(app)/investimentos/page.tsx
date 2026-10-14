@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import {
   getInvestmentsWithCalcs,
   getAllocationData,
+  getAllocationTargets,
   getMonthlyProventos,
 } from "@/lib/queries";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -16,9 +17,10 @@ export default async function InvestimentosPage() {
 
   const year = new Date().getFullYear();
 
-  const [portfolio, allocation, monthlyProventos] = await Promise.all([
+  const [portfolio, allocation, targets, monthlyProventos] = await Promise.all([
     getInvestmentsWithCalcs(userId),
     getAllocationData(userId),
+    getAllocationTargets(userId),
     getMonthlyProventos(userId, year),
   ]);
 
@@ -33,6 +35,7 @@ export default async function InvestimentosPage() {
         assets={portfolio.assets}
         totalValue={portfolio.totalValue}
         allocation={allocation}
+        targets={targets}
         monthlyProventos={monthlyProventos}
       />
     </div>

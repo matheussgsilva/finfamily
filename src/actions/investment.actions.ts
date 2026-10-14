@@ -4,14 +4,16 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
+  allocationTargetsSchema,
   investmentSchema,
   operationSchema,
   proventoSchema,
+  type AllocationTargetsInput,
   type InvestmentInput,
   type OperationInput,
   type ProventoInput,
 } from "@/lib/validations";
-import { fetchPriceForAsset } from "@/lib/marketData";
+import { fetchFxRateToBRL, fetchPriceForAsset } from "@/lib/marketData";
 import { applyOperation, revertOperation } from "@/lib/investmentMath";
 import { getRequiredUserId } from "@/lib/session";
 import type { ActionResult, AssetClass } from "@/types";
@@ -308,9 +310,19 @@ export interface PriceFetchItem {
 }
 
 export type PriceFetchResult =
-  | { id: string; status: "ok"; symbol: string; price: number; currency: string }
+  | {
+      id: string;
+      status: "ok";
+      symbol: string;
+      price: number; // sempre em BRL
+      currency: "BRL";
+      // Cotação original quando o ativo é negociado em outra moeda
+      originalPrice: number;
+      originalCurrency: string;
+      fxRate: number;
+    }
   | { id: string; status: "no-ticker"; symbol: null; price: null; currency: null }
-  | { id: string; status: "error"; symbol: null; price: null; currency: null };
+  | { id: string; status: "error"; symbol: null; price: null; currency: null; reason: string };
 
 export async function fetchInvestmentPrices(
   assets: PriceFetchItem[]
@@ -327,6 +339,13 @@ export async function fetchInvestmentPrices(
     });
     const ownedIds = new Set(owned.map((o) => o.id));
 
+    // Um câmbio por moeda por chamada (vários ativos em USD compartilham a busca).
+    const fxRates = new Map<string, Promise<number | null>>();
+    const fxRateFor = (currency: string) => {
+      if (!fxRates.has(currency)) fxRates.set(currency, fetchFxRateToBRL(currency));
+      return fxRates.get(currency)!;
+    };
+
     const results = await Promise.all(
       assets
         .filter((asset) => ownedIds.has(asset.id))
@@ -336,14 +355,36 @@ export async function fetchInvestmentPrices(
           }
           const quote = await fetchPriceForAsset(asset.ticker, asset.assetClass);
           if (!quote) {
-            return { id: asset.id, status: "error", symbol: null, price: null, currency: null };
+            return {
+              id: asset.id,
+              status: "error",
+              symbol: null,
+              price: null,
+              currency: null,
+              reason: "Ticker não encontrado na internet",
+            };
+          }
+          // Preço gravado sempre em BRL: cotações em USD etc. são convertidas.
+          const fxRate = await fxRateFor(quote.currency);
+          if (fxRate === null) {
+            return {
+              id: asset.id,
+              status: "error",
+              symbol: null,
+              price: null,
+              currency: null,
+              reason: `Câmbio ${quote.currency}/BRL indisponível`,
+            };
           }
           return {
             id: asset.id,
             status: "ok",
             symbol: quote.symbol,
-            price: Number(quote.price.toFixed(6)),
-            currency: quote.currency,
+            price: Number((quote.price * fxRate).toFixed(6)),
+            currency: "BRL",
+            originalPrice: quote.price,
+            originalCurrency: quote.currency,
+            fxRate,
           };
         })
     );
@@ -403,5 +444,33 @@ export async function updateInvestmentPrices(
   } catch (error) {
     console.error("Erro ao atualizar preços:", error);
     return { success: false, error: "Erro interno ao atualizar os preços." };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Metas de alocação por classe
+// ─────────────────────────────────────────────────────────────
+export async function saveAllocationTargets(input: AllocationTargetsInput): Promise<ActionResult> {
+  try {
+    const userId = await getRequiredUserId();
+    const parsed = allocationTargetsSchema.safeParse(input);
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos" };
+    }
+    // Classes com 0% não precisam de linha: ausência = sem meta.
+    const targets = parsed.data.filter((t) => t.percent > 0);
+
+    await db.$transaction([
+      db.allocationTarget.deleteMany({ where: { userId } }),
+      db.allocationTarget.createMany({
+        data: targets.map((t) => ({ assetClass: t.assetClass, percent: t.percent, userId })),
+      }),
+    ]);
+
+    revalidatePath("/investimentos");
+    return { success: true };
+  } catch (error) {
+    console.error("Erro ao salvar metas de alocação:", error);
+    return { success: false, error: "Erro interno ao salvar as metas." };
   }
 }

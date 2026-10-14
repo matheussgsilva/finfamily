@@ -161,10 +161,12 @@ export type BudgetInput = z.infer<typeof budgetSchema>;
 // ─────────────────────────────────────────────────────────────
 // Investimentos
 // ─────────────────────────────────────────────────────────────
+const ASSET_CLASSES = ["FIXED_INCOME", "STOCKS", "REITS", "CRYPTO", "INTERNATIONAL", "OTHER"] as const;
+
 export const investmentSchema = z.object({
   ticker: z.string().trim().optional().nullable(),
   name: z.string().min(1, "Informe o nome do ativo"),
-  assetClass: z.enum(["FIXED_INCOME", "STOCKS", "REITS", "CRYPTO", "INTERNATIONAL", "OTHER"]),
+  assetClass: z.enum(ASSET_CLASSES),
   quantity: z.coerce.number().min(0, "Quantidade inválida"),
   avgPrice: z.coerce.number().min(0, "Preço médio inválido"),
   currentPrice: z.coerce.number().min(0).optional().nullable(),
@@ -177,6 +179,27 @@ export const investmentSchema = z.object({
 });
 
 export type InvestmentInput = z.infer<typeof investmentSchema>;
+
+/** Metas por classe: somam 100% (ou lista vazia para remover todas). */
+export const allocationTargetsSchema = z
+  .array(
+    z.object({
+      assetClass: z.enum(ASSET_CLASSES),
+      percent: z.coerce.number().min(0, "Meta inválida").max(100, "Meta máxima 100%"),
+    })
+  )
+  .refine((list) => new Set(list.map((t) => t.assetClass)).size === list.length, {
+    message: "Classe repetida.",
+  })
+  .refine(
+    (list) => {
+      const total = list.reduce((s, t) => s + t.percent, 0);
+      return list.length === 0 || Math.abs(total - 100) < 0.01;
+    },
+    { message: "As metas precisam somar 100%." }
+  );
+
+export type AllocationTargetsInput = z.infer<typeof allocationTargetsSchema>;
 
 export const operationSchema = z.object({
   type: z.enum(["BUY", "SELL"]),
