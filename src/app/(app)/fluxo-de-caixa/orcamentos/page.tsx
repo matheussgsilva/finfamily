@@ -1,11 +1,10 @@
 import React from "react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { CashFlowTabs } from "@/components/shared/CashFlowTabs";
 import { BudgetsClient } from "@/components/budgets/BudgetsClient";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default async function OrcamentosPage() {
   const session = await auth();
@@ -31,20 +30,7 @@ export default async function OrcamentosPage() {
         description="Defina limites mensais de gastos por categoria."
       />
 
-      <Tabs defaultValue="orcamentos" className="mb-4">
-        <TabsList>
-          <TabsTrigger value="transacoes">
-            <Link href="/fluxo-de-caixa">Transações</Link>
-          </TabsTrigger>
-          <TabsTrigger value="orcamentos">Orçamentos</TabsTrigger>
-          <TabsTrigger value="cartoes">
-            <Link href="/fluxo-de-caixa/cartoes">Faturas</Link>
-          </TabsTrigger>
-          <TabsTrigger value="recorrencias">
-            <Link href="/fluxo-de-caixa/recorrencias">Recorrências</Link>
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <CashFlowTabs active="orcamentos" />
 
       <BudgetsClient categories={categoryItems} />
     </div>

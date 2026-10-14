@@ -3,6 +3,7 @@
 import {
   getAccountBalances,
   getAccounts,
+  getCashFlowProjectionInput,
   getBudgetsWithProgress,
   getCategories,
   getCreditCardInvoice,
@@ -93,4 +94,9 @@ export async function queryRecurringSeries() {
 export async function queryCreditCardInvoice(accountId: string, month: number, year: number) {
   const userId = await getRequiredUserId();
   return getCreditCardInvoice(userId, accountId, month, year);
+}
+
+export async function queryCashFlowProjection(months: 3 | 6 | 12) {
+  const userId = await getRequiredUserId();
+  return getCashFlowProjectionInput(userId, [3, 6, 12].includes(months) ? months : 6);
 }

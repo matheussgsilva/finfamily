@@ -1,9 +1,8 @@
 import { PageHeader } from "@/components/shared/PageHeader";
+import { CashFlowTabs } from "@/components/shared/CashFlowTabs";
 import { TransactionsClient } from "@/components/transactions/TransactionsClient";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export default async function FluxoDeCaixaPage() {
@@ -48,20 +47,7 @@ export default async function FluxoDeCaixaPage() {
         description="Acompanhe e registre todas as movimentações da família."
       />
 
-      <Tabs defaultValue="transacoes" className="mb-4">
-        <TabsList>
-          <TabsTrigger value="transacoes">Transações</TabsTrigger>
-          <TabsTrigger value="orcamentos">
-            <Link href="/fluxo-de-caixa/orcamentos">Orçamentos</Link>
-          </TabsTrigger>
-          <TabsTrigger value="cartoes">
-            <Link href="/fluxo-de-caixa/cartoes">Faturas</Link>
-          </TabsTrigger>
-          <TabsTrigger value="recorrencias">
-            <Link href="/fluxo-de-caixa/recorrencias">Recorrências</Link>
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <CashFlowTabs active="transacoes" />
 
       <TransactionsClient
         accounts={accountItems}
