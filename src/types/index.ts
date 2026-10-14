@@ -180,6 +180,31 @@ export const ASSET_CLASS_COLORS: Record<AssetClass, string> = {
   OTHER: "#6b7280",
 };
 
+// ─────────────────────────────────────────────────────────────
+// Importação de extrato (OFX) e regras de categorização
+// ─────────────────────────────────────────────────────────────
+export interface ImportPreviewRow {
+  fitId: string;
+  date: string; // yyyy-MM-dd
+  amount: number; // com sinal, como veio do banco
+  description: string;
+  type: "INCOME" | "EXPENSE";
+  categoryId: string | null;
+  suggestionSource: "rule" | "history" | null;
+  status: "new" | "imported" | "possible-duplicate";
+  defaultSkip: boolean;
+}
+
+export interface CategorizationRuleItem {
+  id: string;
+  pattern: string;
+  categoryId: string;
+  categoryName: string;
+  categoryIcon: string | null;
+  categoryColor: string;
+  categoryType: CategoryType;
+}
+
 export const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
   INCOME: "Receita",
   EXPENSE: "Despesa",

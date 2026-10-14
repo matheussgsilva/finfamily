@@ -31,7 +31,9 @@ import {
   Repeat,
   Search,
   Trash2,
+  Upload,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NewTransactionButton } from "./NewTransactionButton";
@@ -141,8 +143,14 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
 
   return (
     <div className="space-y-4">
-      {/* Ação do header (botão nova transação) */}
-      <div className="flex justify-end">
+      {/* Ações do header (importar extrato, nova transação) */}
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" asChild>
+          <Link href="/fluxo-de-caixa/importar">
+            <Upload size={16} />
+            Importar OFX
+          </Link>
+        </Button>
         <NewTransactionButton
           accounts={accounts}
           categories={categories}

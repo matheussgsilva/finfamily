@@ -35,6 +35,7 @@ model User {
   bankAccounts  BankAccount[]
   investments   Investment[]
   categories    Category[]
+  rules         CategorizationRule[]
 
   @@map("users")
 }
@@ -140,6 +141,7 @@ model Category {
 
   transactions Transaction[]
   budgets      Budget[]
+  rules        CategorizationRule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -169,6 +171,9 @@ model Transaction {
   installmentNum Int?    // Número da parcela atual
   parentId       String? // ID da transação pai (series)
 
+  // Importação (OFX): identificador do lançamento no banco (FITID)
+  externalId String?
+
   // Relações
   categoryId   String?
   category     Category?    @relation(fields: [categoryId], references: [id])
@@ -188,10 +193,31 @@ model Transaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([bankAccountId, externalId])
   @@index([userId, date])
   @@index([userId, type])
   @@index([categoryId])
   @@map("transactions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — Regras de categorização automática (importação)
+// ─────────────────────────────────────────────────────────────
+
+model CategorizationRule {
+  id         String   @id @default(cuid())
+  pattern    String // Texto que a descrição deve conter (comparado normalizado)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, pattern, categoryId])
+  @@index([userId])
+  @@map("categorization_rules")
 }
 
 // ─────────────────────────────────────────────────────────────

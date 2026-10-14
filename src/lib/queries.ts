@@ -25,6 +25,7 @@ import {
 import type {
   AllocationData,
   BudgetWithProgress,
+  CategorizationRuleItem,
   DashboardKPIs,
   InvestmentWithCalcs,
   RecurringSeriesItem,
@@ -730,4 +731,25 @@ export async function getCreditCardInvoice(
     dueDay: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
     closingDay: account.closingDay || 1,
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Regras de categorização (importação de extrato)
+// ─────────────────────────────────────────────────────────────
+export async function getCategorizationRules(userId: string): Promise<CategorizationRuleItem[]> {
+  const rules = await db.categorizationRule.findMany({
+    where: { userId },
+    include: { category: { select: { name: true, icon: true, color: true, type: true } } },
+    orderBy: { pattern: "asc" },
+  });
+
+  return rules.map((r) => ({
+    id: r.id,
+    pattern: r.pattern,
+    categoryId: r.categoryId,
+    categoryName: r.category.name,
+    categoryIcon: r.category.icon,
+    categoryColor: r.category.color,
+    categoryType: r.category.type,
+  }));
 }

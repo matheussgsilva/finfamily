@@ -85,6 +85,9 @@ export const transactionSchema = z.object({
 
 export type TransactionInput = z.infer<typeof transactionSchema>;
 
+/** Dia no formato yyyy-MM-dd. */
+const isoDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida");
+
 // ─────────────────────────────────────────────────────────────
 // Pagamento de fatura de cartão
 // ─────────────────────────────────────────────────────────────
@@ -94,12 +97,54 @@ export const invoicePaymentSchema = z.object({
   amount: z.coerce.number().positive("Valor deve ser maior que zero"),
   // Dia do pagamento (yyyy-MM-dd). Mantido como texto para a action montar a
   // data no mesmo fuso usado no cálculo da janela de pagamento da fatura.
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida"),
+  date: isoDaySchema,
   month: z.coerce.number().int().min(1).max(12),
   year: z.coerce.number().int().min(2000).max(2100),
 });
 
 export type InvoicePaymentInput = z.infer<typeof invoicePaymentSchema>;
+
+// ─────────────────────────────────────────────────────────────
+// Importação de extrato (OFX) e regras de categorização
+// ─────────────────────────────────────────────────────────────
+const importRowSchema = z.object({
+  fitId: z.string().min(1).max(255),
+  date: isoDaySchema,
+  amount: z.number().refine((v) => v !== 0, "Valor inválido"),
+  description: z.string().trim().min(1).max(500),
+});
+
+export const importPreviewSchema = z.object({
+  bankAccountId: z.string().min(1, "Selecione a conta"),
+  rows: z
+    .array(importRowSchema)
+    .min(1, "Nenhum lançamento encontrado no arquivo.")
+    .max(2000, "Arquivo com lançamentos demais (máximo 2000)."),
+});
+
+export type ImportPreviewInput = z.infer<typeof importPreviewSchema>;
+
+export const importConfirmSchema = z.object({
+  bankAccountId: z.string().min(1, "Selecione a conta"),
+  rows: z
+    .array(
+      importRowSchema.extend({
+        categoryId: z.string().nullable().optional(),
+        rememberPattern: z.string().trim().max(100).nullable().optional(),
+      })
+    )
+    .min(1, "Selecione ao menos um lançamento.")
+    .max(2000),
+});
+
+export type ImportConfirmInput = z.infer<typeof importConfirmSchema>;
+
+export const categorizationRuleSchema = z.object({
+  pattern: z.string().trim().min(2, "Informe ao menos 2 caracteres").max(100),
+  categoryId: z.string().min(1, "Selecione a categoria"),
+});
+
+export type CategorizationRuleInput = z.infer<typeof categorizationRuleSchema>;
 
 // ─────────────────────────────────────────────────────────────
 // Orçamentos
