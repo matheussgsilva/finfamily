@@ -10,7 +10,8 @@ import { transactionSchema } from "@/lib/validations";
 import { createTransaction, updateTransaction } from "@/actions/transaction.actions";
 import { useRouter } from "next/navigation";
 import { CategoryIcon } from "@/components/shared/CategoryIcon";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
+import { splitInstallments } from "@/lib/installmentMath";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateInputBR } from "@/components/ui/date-input";
 import type { AccountType, TransactionType } from "@/types";
@@ -140,6 +141,14 @@ export function TransactionFormDialog({
   }, [open, transaction, reset, accounts]);
 
   const type = watch("type");
+  // Ao criar uma compra parcelada, o valor digitado é o total da compra e é
+  // dividido entre as parcelas (ao editar, cada parcela já tem o próprio valor).
+  const watchedAmount = Number(watch("amount")) || 0;
+  const watchedInstallments = Number(watch("installments")) || 0;
+  const installmentPreview =
+    !transaction && type === "EXPENSE" && watchedInstallments >= 2 && watchedAmount > 0
+      ? splitInstallments(watchedAmount, watchedInstallments)
+      : null;
 
   const filteredCategories = useMemo(() => {
     if (type === "TRANSFER") return [];
@@ -244,7 +253,7 @@ export function TransactionFormDialog({
             </div>
 
             <div>
-              <Label>Valor</Label>
+              <Label>{installmentPreview ? "Valor total" : "Valor"}</Label>
               <Controller
                 control={control}
                 name="amount"
@@ -259,6 +268,13 @@ export function TransactionFormDialog({
                 )}
               />
               {errors.amount && <p className="mt-1 text-xs text-red-400">{errors.amount.message}</p>}
+              {installmentPreview && (
+                <p className="mt-1 text-xs text-zinc-500">
+                  {installmentPreview.length}x de {formatCurrency(installmentPreview[installmentPreview.length - 1])}
+                  {installmentPreview[0] !== installmentPreview[installmentPreview.length - 1] &&
+                    ` (1ª parcela de ${formatCurrency(installmentPreview[0])})`}
+                </p>
+              )}
             </div>
 
             <div>

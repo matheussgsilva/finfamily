@@ -5,6 +5,7 @@ import {
   getAccounts,
   getBudgetsWithProgress,
   getCategories,
+  getCreditCardInvoice,
   getDashboardKPIs,
   getExpenseByCategory,
   getExpenseCategories,
@@ -87,4 +88,9 @@ export async function queryInvestmentDetail(investmentId: string) {
 export async function queryRecurringSeries() {
   const userId = await getRequiredUserId();
   return getRecurringSeries(userId);
+}
+
+export async function queryCreditCardInvoice(accountId: string, month: number, year: number) {
+  const userId = await getRequiredUserId();
+  return getCreditCardInvoice(userId, accountId, month, year);
 }

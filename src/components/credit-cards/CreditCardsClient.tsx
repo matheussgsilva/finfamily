@@ -4,7 +4,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, CreditCard } from "lucide-react";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { getCreditCardInvoice, type CreditCardInvoiceData } from "@/actions/credit-card.actions";
+import { queryCreditCardInvoice } from "@/actions/query.actions";
+import type { CreditCardInvoiceData, CreditCardInvoiceTransaction } from "@/lib/queries";
 import { formatCurrency } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PrivacyValue } from "@/components/shared/PrivacyValue";
@@ -36,9 +37,9 @@ export function CreditCardsClient({ creditCards }: { creditCards: CreditCardItem
     const id = ++requestId.current;
     setLoading(true);
     try {
-      const res = await getCreditCardInvoice(selectedCardId, month, year);
+      const data = await queryCreditCardInvoice(selectedCardId, month, year);
       if (id === requestId.current) {
-        setInvoiceData(res.success ? (res.data ?? null) : null);
+        setInvoiceData(data);
       }
     } finally {
       if (id === requestId.current) setLoading(false);
@@ -113,10 +114,24 @@ export function CreditCardsClient({ creditCards }: { creditCards: CreditCardItem
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4">
               <div>
-                <p className="text-sm text-zinc-400 mb-1">Total da Fatura</p>
+                <p className="text-sm text-zinc-400 mb-1">Em aberto</p>
                 <PrivacyValue className="text-2xl font-bold text-white">
-                  {formatCurrency(invoiceData.total)}
+                  {formatCurrency(invoiceData.open)}
                 </PrivacyValue>
+                <div className="mt-2 flex gap-4 text-xs">
+                  <span className="text-zinc-400">
+                    Total:{" "}
+                    <PrivacyValue className="font-medium text-zinc-200">
+                      {formatCurrency(invoiceData.total)}
+                    </PrivacyValue>
+                  </span>
+                  <span className="text-zinc-400">
+                    Pago:{" "}
+                    <PrivacyValue className="font-medium text-emerald-400">
+                      {formatCurrency(invoiceData.paid)}
+                    </PrivacyValue>
+                  </span>
+                </div>
                 <p className="text-xs text-zinc-500 mt-1">
                   Período: {format(new Date(invoiceData.startDate), "dd/MM/yyyy")} a {format(new Date(invoiceData.endDate), "dd/MM/yyyy")}
                 </p>
@@ -146,37 +161,69 @@ export function CreditCardsClient({ creditCards }: { creditCards: CreditCardItem
             ) : (
               <div className="divide-y divide-border">
                 {invoiceData.transactions.map((t) => (
-                  <div key={t.id} className="p-4 flex items-center justify-between hover:bg-zinc-800/30 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="flex items-center justify-center w-10 h-10 rounded-xl"
-                        style={{ backgroundColor: `${t.category?.color || '#6366f1'}22`, color: t.category?.color || '#6366f1' }}
-                      >
-                        <CategoryIcon name={t.category?.icon} size={18} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-zinc-200">{t.description}</p>
-                        <p className="text-xs text-zinc-500">
-                          {format(new Date(t.date), "dd/MM/yyyy")} • {t.category?.name || "Sem categoria"}
-                          {t.installments ? ` (${t.installmentNum}/${t.installments})` : ""}
-                        </p>
-                      </div>
-                    </div>
-                    <PrivacyValue className={`text-sm font-semibold ${t.type === 'INCOME' || t.type === 'TRANSFER' ? 'text-emerald-400' : 'text-zinc-200'}`}>
-                      {t.type === 'INCOME' || t.type === 'TRANSFER' ? "+" : ""}
-                      {formatCurrency(Number(t.amount))}
-                    </PrivacyValue>
-                  </div>
+                  <InvoiceRow key={t.id} transaction={t} />
                 ))}
               </div>
             )}
           </div>
+
+          {invoiceData.payments.length > 0 && (
+            <div className="rounded-2xl border border-border bg-card overflow-hidden">
+              <div className="p-4 border-b border-border bg-[#090d16]/50">
+                <h3 className="text-sm font-semibold text-zinc-200">Pagamentos</h3>
+              </div>
+              <div className="divide-y divide-border">
+                {invoiceData.payments.map((t) => (
+                  <InvoiceRow key={t.id} transaction={t} isPayment />
+                ))}
+              </div>
+            </div>
+          )}
         </>
       ) : (
         <div className="rounded-2xl border border-border bg-card p-12 text-center text-sm text-zinc-500">
           Não foi possível carregar a fatura.
         </div>
       )}
+    </div>
+  );
+}
+
+function InvoiceRow({
+  transaction: t,
+  isPayment = false,
+}: {
+  transaction: CreditCardInvoiceTransaction;
+  isPayment?: boolean;
+}) {
+  // Pagamentos e estornos (INCOME no cartão) reduzem o que se deve.
+  const isCredit = isPayment || t.type === "INCOME";
+  const color = t.category?.color || "#6366f1";
+  const subtitle = isPayment
+    ? `Pagamento a partir de ${t.bankAccount.name}`
+    : t.category?.name || (t.type === "TRANSFER" ? "Transferência" : "Sem categoria");
+
+  return (
+    <div className="p-4 flex items-center justify-between hover:bg-zinc-800/30 transition-colors">
+      <div className="flex items-center gap-3">
+        <div
+          className="flex items-center justify-center w-10 h-10 rounded-xl"
+          style={{ backgroundColor: `${color}22`, color }}
+        >
+          <CategoryIcon name={t.category?.icon} size={18} />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-zinc-200">{t.description}</p>
+          <p className="text-xs text-zinc-500">
+            {format(new Date(t.date), "dd/MM/yyyy")} • {subtitle}
+            {t.installments ? ` (${t.installmentNum}/${t.installments})` : ""}
+          </p>
+        </div>
+      </div>
+      <PrivacyValue className={`text-sm font-semibold ${isCredit ? "text-emerald-400" : "text-zinc-200"}`}>
+        {isCredit ? "+" : ""}
+        {formatCurrency(t.amount)}
+      </PrivacyValue>
     </div>
   );
 }

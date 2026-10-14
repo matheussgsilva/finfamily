@@ -1,4 +1,4 @@
-import { addMonths, isAfter } from "date-fns";
+import { addMonths, differenceInCalendarMonths, isAfter } from "date-fns";
 
 /**
  * Única regra suportada por enquanto (MVP mensal). O valor é gravado em
@@ -7,28 +7,42 @@ import { addMonths, isAfter } from "date-fns";
  */
 export const DEFAULT_RECURRENCE_RULE = "FREQ=MONTHLY;INTERVAL=1";
 
-export function computeNextOccurrenceDate(lastDate: Date): Date {
-  return addMonths(lastDate, 1);
+/**
+ * Índice (em meses a partir da raiz) da primeira ocorrência que cai num mês
+ * posterior ao de `lastDate`. Comparar por mês do calendário, e não por data
+ * exata, faz séries que já derivaram de dia (ex.: 28/03 em vez de 31/03) não
+ * gerarem uma segunda ocorrência no mesmo mês.
+ */
+function nextOccurrenceIndex(rootDate: Date, lastDate: Date): number {
+  return Math.max(1, differenceInCalendarMonths(lastDate, rootDate) + 1);
 }
 
 /**
- * Retorna as datas mensais devidas entre `lastDate` (exclusivo) e `today`
- * (inclusivo). O teto de iterações evita gerar uma série enorme de uma vez
- * só caso uma recorrência fique muito tempo sem o app ser aberto.
+ * Próxima ocorrência depois de `lastDate`. As datas são sempre calculadas a
+ * partir da raiz (`rootDate + k meses`), então uma recorrência do dia 31 fica
+ * 31/01 → 28/02 → 31/03, em vez de travar no dia 28 para sempre.
+ */
+export function computeNextOccurrenceDate(rootDate: Date, lastDate: Date): Date {
+  return addMonths(rootDate, nextOccurrenceIndex(rootDate, lastDate));
+}
+
+/**
+ * Retorna as datas mensais devidas depois do mês de `lastDate` até `today`
+ * (inclusivo). O teto evita gerar uma série enorme de uma vez só caso uma
+ * recorrência fique muito tempo sem o app ser aberto.
  */
 export function getDueOccurrences(
+  rootDate: Date,
   lastDate: Date,
   today: Date,
-  maxIterations = 36
+  maxOccurrences = 36
 ): Date[] {
   const dates: Date[] = [];
-  let cursor = lastDate;
 
-  for (let i = 0; i < maxIterations; i++) {
-    const next = computeNextOccurrenceDate(cursor);
+  for (let k = nextOccurrenceIndex(rootDate, lastDate); dates.length < maxOccurrences; k++) {
+    const next = addMonths(rootDate, k);
     if (isAfter(next, today)) break;
     dates.push(next);
-    cursor = next;
   }
 
   return dates;

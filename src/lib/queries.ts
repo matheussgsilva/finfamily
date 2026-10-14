@@ -1,9 +1,22 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { addMonths, endOfMonth, endOfYear, format, startOfMonth, startOfYear, subMonths } from "date-fns";
+import {
+  addMonths,
+  eachDayOfInterval,
+  endOfDay,
+  endOfMonth,
+  endOfYear,
+  format,
+  startOfDay,
+  startOfMonth,
+  startOfYear,
+  subDays,
+  subMonths,
+} from "date-fns";
 import { computeNextOccurrenceDate } from "@/lib/recurrence";
-import { reconcileOpeningBalance } from "@/lib/netWorthMath";
+import { investmentValueAt, reconcileOpeningBalance, type InvestmentHistoryInput } from "@/lib/netWorthMath";
+import { getInvoicePaymentPeriod, getInvoicePeriod, summarizeInvoice } from "@/lib/creditCardMath";
 import type {
   AllocationData,
   BudgetWithProgress,
@@ -118,19 +131,23 @@ export async function getAccountBalances(userId: string) {
   // Soma por conta de origem: INCOME soma, EXPENSE e TRANSFER subtraem.
   // Transferências sem destinationAccountId são ignoradas (dado inconsistente,
   // mesmo comportamento defensivo que existia no cálculo em memória).
+  // Só entra o que já aconteceu (até o fim de hoje): parcelas e lançamentos
+  // agendados para o futuro não mexem no saldo atual.
+  const asOf = endOfDay(new Date());
   const [accounts, outgoing, incoming] = await Promise.all([
     db.bankAccount.findMany({ where: { userId } }),
     db.transaction.groupBy({
       by: ["bankAccountId", "type"],
       where: {
         userId,
+        date: { lte: asOf },
         OR: [{ type: { not: "TRANSFER" } }, { type: "TRANSFER", destinationAccountId: { not: null } }],
       },
       _sum: { amount: true },
     }),
     db.transaction.groupBy({
       by: ["destinationAccountId"],
-      where: { userId, type: "TRANSFER", destinationAccountId: { not: null } },
+      where: { userId, type: "TRANSFER", destinationAccountId: { not: null }, date: { lte: asOf } },
       _sum: { amount: true },
     }),
   ]);
@@ -225,36 +242,29 @@ export async function getBudgetsWithProgress(
 // ─────────────────────────────────────────────────────────────
 export async function getDashboardKPIs(userId: string): Promise<DashboardKPIs> {
   const now = new Date();
-  const monthStart = startOfMonth(now);
 
   const [accounts, monthTx, investments] = await Promise.all([
     getAccountBalances(userId),
     db.transaction.findMany({
-      where: { userId, date: { gte: monthStart } },
-      select: { type: true, amount: true, bankAccountId: true },
+      where: { userId, date: { gte: startOfMonth(now), lte: endOfMonth(now) } },
+      select: { type: true, amount: true },
     }),
     db.investment.findMany({ where: { userId } }),
   ]);
 
   let monthIncome = 0;
   let monthExpense = 0;
-  let creditCardBalance = 0;
-
   for (const tx of monthTx) {
     if (tx.type === "INCOME") monthIncome += Number(tx.amount);
     else if (tx.type === "EXPENSE") monthExpense += Number(tx.amount);
-    const account = accounts.find((a) => a.id === tx.bankAccountId);
-    if (account?.type === "CREDIT_CARD") {
-      if (tx.type === "EXPENSE") creditCardBalance -= Number(tx.amount);
-      else if (tx.type === "INCOME") creditCardBalance += Number(tx.amount);
-    }
   }
 
-  // Cartão de crédito não é saldo disponível (é dívida) — entra no netWorth
-  // separadamente via creditCardBalance, não aqui.
+  // Cartão de crédito não é saldo disponível (é dívida): fica fora do saldo
+  // consolidado, mas entra no patrimônio com o próprio saldo (negativo quando há dívida).
   const totalBalance = accounts
     .filter((a) => a.type !== "CREDIT_CARD")
     .reduce((s, a) => s + a.balance, 0);
+  const allAccountsBalance = accounts.reduce((s, a) => s + a.balance, 0);
   const totalInvested = investments.reduce(
     (s, inv) => s + Number(inv.quantity) * Number(inv.currentPrice ?? inv.avgPrice),
     0
@@ -269,7 +279,7 @@ export async function getDashboardKPIs(userId: string): Promise<DashboardKPIs> {
     monthExpense,
     savingsRate: Math.max(savingsRate, 0),
     totalInvested,
-    netWorth: totalBalance + creditCardBalance + totalInvested,
+    netWorth: allAccountsBalance + totalInvested,
   };
 }
 
@@ -339,27 +349,38 @@ export async function getMonthlyCashFlow(userId: string, monthsBack = 6) {
 
 export async function getNetWorthSeries(userId: string, range: "1M" | "6M" | "1Y" | "ALL") {
   const now = new Date();
+  const asOf = endOfDay(now);
   let start: Date;
   let granularity: "day" | "month" = "month";
 
   if (range === "1M") {
-    start = startOfMonth(subMonths(now, 1));
+    start = startOfDay(subDays(now, 29));
     granularity = "day";
   } else if (range === "6M") {
     start = startOfMonth(subMonths(now, 5));
   } else if (range === "1Y") {
     start = startOfMonth(subMonths(now, 11));
   } else {
-    start = startOfYear(now);
+    const oldest = await db.transaction.aggregate({
+      where: { userId, date: { lte: asOf } },
+      _min: { date: true },
+    });
+    start = oldest._min.date ? startOfMonth(oldest._min.date) : startOfYear(now);
   }
 
   const [accountBalances, transactions, investments] = await Promise.all([
     getAccountBalances(userId),
     db.transaction.findMany({
-      where: { userId, date: { gte: start } },
+      where: { userId, date: { gte: start, lte: asOf } },
       select: { type: true, amount: true, date: true },
     }),
-    db.investment.findMany({ where: { userId } }),
+    db.investment.findMany({
+      where: { userId },
+      include: {
+        operations: { select: { type: true, quantity: true, date: true } },
+        priceHistory: { select: { price: true, date: true } },
+      },
+    }),
   ]);
 
   const currentTotalBalance = accountBalances.reduce((s, a) => s + a.balance, 0);
@@ -367,53 +388,58 @@ export async function getNetWorthSeries(userId: string, range: "1M" | "6M" | "1Y
     currentTotalBalance,
     transactions.map((tx) => ({ type: tx.type, amount: Number(tx.amount) }))
   );
-  const investedValue = investments.reduce(
-    (s, inv) => s + Number(inv.quantity) * Number(inv.currentPrice ?? inv.avgPrice),
-    0
-  );
 
-  // Agrupar transações por período
-  const keys = new Map<string, { income: number; expense: number }>();
+  const assets: InvestmentHistoryInput[] = investments.map((inv) => ({
+    quantity: Number(inv.quantity),
+    avgPrice: Number(inv.avgPrice),
+    createdAt: inv.createdAt,
+    operations: inv.operations.map((op) => ({
+      type: op.type,
+      quantity: Number(op.quantity),
+      date: op.date,
+    })),
+    // O preço atual (que pode ter sido editado à mão, sem histórico) vale a
+    // partir de agora, garantindo que o último ponto bata com o KPI do dashboard.
+    priceHistory: [
+      ...inv.priceHistory.map((p) => ({ price: Number(p.price), date: p.date })),
+      { price: Number(inv.currentPrice ?? inv.avgPrice), date: now },
+    ],
+  }));
+
+  // Cada ponto representa o fim do período (dia ou mês), limitado a agora.
+  const periods = new Map<string, { end: Date; income: number; expense: number }>();
   if (granularity === "day") {
-    for (let i = 0; i <= now.getDate(); i++) {
-      const d = new Date(now.getFullYear(), now.getMonth(), i);
-      if (d >= start) keys.set(format(d, "yyyy-MM-dd"), { income: 0, expense: 0 });
+    for (const day of eachDayOfInterval({ start, end: now })) {
+      periods.set(format(day, "yyyy-MM-dd"), { end: endOfDay(day), income: 0, expense: 0 });
     }
   } else {
-    let cursor = start;
-    while (cursor <= now) {
-      keys.set(format(cursor, "yyyy-MM"), { income: 0, expense: 0 });
-      cursor = addMonths(cursor, 1);
+    for (let cursor = start; cursor <= now; cursor = addMonths(cursor, 1)) {
+      periods.set(format(cursor, "yyyy-MM"), { end: endOfMonth(cursor), income: 0, expense: 0 });
     }
   }
 
   for (const tx of transactions) {
     const key = granularity === "day" ? format(tx.date, "yyyy-MM-dd") : format(tx.date, "yyyy-MM");
-    if (!keys.has(key)) continue;
-    if (tx.type === "INCOME") keys.get(key)!.income += Number(tx.amount);
-    else if (tx.type === "EXPENSE") keys.get(key)!.expense += Number(tx.amount);
+    const period = periods.get(key);
+    if (!period) continue;
+    if (tx.type === "INCOME") period.income += Number(tx.amount);
+    else if (tx.type === "EXPENSE") period.expense += Number(tx.amount);
   }
 
   let cumulative = openingTotal;
-  const series = [...keys.entries()].map(([key, value]) => {
-    cumulative += value.income - value.expense;
+  return [...periods.entries()].map(([key, period]) => {
+    cumulative += period.income - period.expense;
+    const pointDate = period.end < now ? period.end : now;
+    const investedValue = assets.reduce((s, asset) => s + investmentValueAt(asset, pointDate), 0);
+
     return {
       date:
         granularity === "day"
           ? format(new Date(`${key}T12:00:00`), "dd/MM")
           : format(new Date(`${key}-01T12:00:00`), "MMM/yy"),
-      netWorth: Number(cumulative.toFixed(2)),
+      netWorth: Number((cumulative + investedValue).toFixed(2)),
     };
   });
-
-  // Patrimônio final inclui investimentos
-  if (series.length > 0) {
-    series[series.length - 1].netWorth = Number(
-      (series[series.length - 1].netWorth + investedValue).toFixed(2)
-    );
-  }
-
-  return series;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -596,8 +622,99 @@ export async function getRecurringSeries(userId: string): Promise<RecurringSerie
       bankAccountName: root.bankAccount.name,
       bankAccountColor: root.bankAccount.color,
       lastDate,
-      nextDate: root.isRecurring ? computeNextOccurrenceDate(lastDate) : null,
+      nextDate: root.isRecurring ? computeNextOccurrenceDate(root.date, lastDate) : null,
       occurrenceCount: 1 + (stats?._count._all ?? 0),
     };
   });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Fatura de cartão de crédito
+// ─────────────────────────────────────────────────────────────
+export interface CreditCardInvoiceTransaction {
+  id: string;
+  description: string;
+  amount: number;
+  type: "INCOME" | "EXPENSE" | "TRANSFER";
+  date: Date;
+  installments: number | null;
+  installmentNum: number | null;
+  bankAccountId: string;
+  destinationAccountId: string | null;
+  category: { name: string; icon: string | null; color: string } | null;
+  bankAccount: { name: string };
+}
+
+export interface CreditCardInvoiceData {
+  transactions: CreditCardInvoiceTransaction[];
+  payments: CreditCardInvoiceTransaction[];
+  total: number;
+  paid: number;
+  open: number;
+  startDate: Date;
+  endDate: Date;
+  closingDay: number;
+  dueDay: number | null;
+}
+
+export async function getCreditCardInvoice(
+  userId: string,
+  accountId: string,
+  month: number,
+  year: number
+): Promise<CreditCardInvoiceData | null> {
+  const account = await db.bankAccount.findFirst({
+    where: { id: accountId, userId, type: "CREDIT_CARD" },
+  });
+  if (!account) return null;
+
+  const { startDate, endDate } = getInvoicePeriod(month, year, account.closingDay);
+  const paymentPeriod = getInvoicePaymentPeriod(month, year, account.closingDay);
+
+  const select = {
+    id: true,
+    description: true,
+    amount: true,
+    type: true,
+    date: true,
+    installments: true,
+    installmentNum: true,
+    bankAccountId: true,
+    destinationAccountId: true,
+    category: { select: { name: true, icon: true, color: true } },
+    bankAccount: { select: { name: true } },
+  } as const;
+
+  const [charges, payments] = await Promise.all([
+    db.transaction.findMany({
+      where: { userId, bankAccountId: accountId, date: { gte: startDate, lte: endDate } },
+      select,
+      orderBy: { date: "desc" },
+    }),
+    db.transaction.findMany({
+      where: {
+        userId,
+        type: "TRANSFER",
+        destinationAccountId: accountId,
+        date: { gte: paymentPeriod.startDate, lte: paymentPeriod.endDate },
+      },
+      select,
+      orderBy: { date: "desc" },
+    }),
+  ]);
+
+  const toItem = (t: (typeof charges)[number]) => ({ ...t, amount: Number(t.amount) });
+  const transactions = charges.map(toItem);
+  const paymentItems = payments.map(toItem);
+  const summary = summarizeInvoice(accountId, transactions, paymentItems);
+
+  return {
+    transactions,
+    payments: paymentItems,
+    ...summary,
+    startDate,
+    endDate,
+    closingDay: account.closingDay || 1,
+    dueDay: account.dueDay,
+  };
 }
