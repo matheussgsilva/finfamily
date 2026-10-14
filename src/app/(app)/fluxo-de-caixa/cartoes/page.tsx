@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getAccountBalances } from "@/lib/queries";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreditCardsClient } from "@/components/credit-cards/CreditCardsClient";
@@ -12,10 +13,17 @@ export default async function CartoesPage() {
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
 
-  const creditCards = await db.bankAccount.findMany({
-    where: { userId, type: "CREDIT_CARD" },
-    orderBy: { name: "asc" },
-  });
+  const [creditCards, balances] = await Promise.all([
+    db.bankAccount.findMany({
+      where: { userId, type: "CREDIT_CARD" },
+      orderBy: { name: "asc" },
+    }),
+    getAccountBalances(userId),
+  ]);
+
+  const paymentAccounts = balances
+    .filter((a) => a.type !== "CREDIT_CARD")
+    .map((a) => ({ id: a.id, name: a.name, color: a.color, balance: a.balance }));
 
   const cardItems = creditCards.map((c) => ({
     id: c.id,
@@ -47,7 +55,7 @@ export default async function CartoesPage() {
         </TabsList>
       </Tabs>
 
-      <CreditCardsClient creditCards={cardItems} />
+      <CreditCardsClient creditCards={cardItems} paymentAccounts={paymentAccounts} />
     </div>
   );
 }

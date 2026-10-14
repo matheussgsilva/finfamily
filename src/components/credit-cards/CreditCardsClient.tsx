@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, CreditCard } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CheckCircle2, ChevronLeft, ChevronRight, CreditCard } from "lucide-react";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { queryCreditCardInvoice } from "@/actions/query.actions";
@@ -10,7 +11,9 @@ import { formatCurrency } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PrivacyValue } from "@/components/shared/PrivacyValue";
 import { CategoryIcon } from "@/components/shared/CategoryIcon";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PayInvoiceFormDialog, type PaymentAccountItem } from "./PayInvoiceFormDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface CreditCardItem {
@@ -21,7 +24,17 @@ interface CreditCardItem {
   dueDay: number | null;
 }
 
-export function CreditCardsClient({ creditCards }: { creditCards: CreditCardItem[] }) {
+const isoDayToBR = (day: string) => day.split("-").reverse().join("/");
+
+export function CreditCardsClient({
+  creditCards,
+  paymentAccounts,
+}: {
+  creditCards: CreditCardItem[];
+  paymentAccounts: PaymentAccountItem[];
+}) {
+  const router = useRouter();
+  const [payOpen, setPayOpen] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string>(creditCards[0]?.id || "");
   const [monthOffset, setMonthOffset] = useState(0);
   const [invoiceData, setInvoiceData] = useState<CreditCardInvoiceData | null>(null);
@@ -139,11 +152,24 @@ export function CreditCardsClient({ creditCards }: { creditCards: CreditCardItem
               <div className="text-left sm:text-right">
                 <p className="text-sm text-zinc-400 mb-1">Vencimento</p>
                 <p className="text-sm font-medium text-zinc-200">
-                  {invoiceData.dueDay ? `${invoiceData.dueDay} de ${format(activeMonth, "MMMM", { locale: ptBR })}` : "Não definido"}
+                  {invoiceData.dueDay ? isoDayToBR(invoiceData.dueDay) : "Não definido"}
                 </p>
-                <Button size="sm" className="mt-3 w-full sm:w-auto" disabled>
-                  Pagar Fatura
-                </Button>
+                {invoiceData.total > 0 && invoiceData.open === 0 ? (
+                  <Badge variant="success" className="mt-3 gap-1">
+                    <CheckCircle2 size={12} />
+                    Paga
+                  </Badge>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="mt-3 w-full sm:w-auto"
+                    disabled={invoiceData.open <= 0 || paymentAccounts.length === 0}
+                    title={paymentAccounts.length === 0 ? "Cadastre uma conta para pagar a fatura" : undefined}
+                    onClick={() => setPayOpen(true)}
+                  >
+                    Pagar Fatura
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -179,6 +205,23 @@ export function CreditCardsClient({ creditCards }: { creditCards: CreditCardItem
               </div>
             </div>
           )}
+
+          <PayInvoiceFormDialog
+            open={payOpen}
+            onOpenChange={setPayOpen}
+            cardId={selectedCardId}
+            cardName={creditCards.find((c) => c.id === selectedCardId)?.name ?? ""}
+            month={month}
+            year={year}
+            openAmount={invoiceData.open}
+            paymentStartDay={invoiceData.paymentStartDay}
+            paymentEndDay={invoiceData.paymentEndDay}
+            accounts={paymentAccounts}
+            onSuccess={() => {
+              fetchInvoice();
+              router.refresh();
+            }}
+          />
         </>
       ) : (
         <div className="rounded-2xl border border-border bg-card p-12 text-center text-sm text-zinc-500">

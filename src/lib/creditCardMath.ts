@@ -1,4 +1,4 @@
-import { endOfDay, startOfDay } from "date-fns";
+import { endOfDay, getDaysInMonth, startOfDay } from "date-fns";
 
 export interface InvoicePeriod {
   startDate: Date;
@@ -30,6 +30,26 @@ export function getInvoicePaymentPeriod(
   closingDay: number | null
 ): InvoicePeriod {
   return getInvoicePeriod(month + 1, year, closingDay);
+}
+
+/**
+ * Data de vencimento da fatura do mês X. Se o dia de vencimento é depois do
+ * fechamento, vence no próprio mês X; senão, no mês seguinte (ex.: fecha dia
+ * 28 e vence dia 5 => vence em 05/X+1). Dias inexistentes no mês (31 em
+ * fevereiro) caem no último dia do mês.
+ */
+export function getInvoiceDueDate(
+  month: number,
+  year: number,
+  closingDay: number | null,
+  dueDay: number | null
+): Date | null {
+  if (!dueDay) return null;
+  const closing = closingDay || 1;
+  const monthIndex = dueDay > closing ? month - 1 : month;
+  const firstOfMonth = new Date(year, monthIndex, 1);
+  const day = Math.min(dueDay, getDaysInMonth(firstOfMonth));
+  return new Date(firstOfMonth.getFullYear(), firstOfMonth.getMonth(), day);
 }
 
 export interface InvoiceTransaction {

@@ -2,9 +2,9 @@
 
 Abaixo estão as principais funcionalidades que restam ser implementadas de acordo com o plano original do projeto e com base no que já foi desenvolvido.
 
-## 1. Pagamento de Faturas de Cartão de Crédito
-- **Onde estamos:** A visualização das faturas (gastos do mês agrupados por fechamento) já foi concluída na página `/fluxo-de-caixa/cartoes`.
-- **O que falta:** Implementar o fluxo de "Pagar Fatura". Quando o usuário fecha o mês, ele precisa de um botão que gere uma transação do tipo `TRANSFER` (Transferência) saindo de uma conta corrente (ex: Nubank Conta) para a conta do cartão de crédito (ex: Nubank Cartão). Isso atualizará o saldo da conta corrente e abaterá a dívida do cartão no sistema.
+## 1. Pagamento de Faturas de Cartão de Crédito ✅ Concluído
+- O botão **Pagar Fatura** em `/fluxo-de-caixa/cartoes` gera uma transação `TRANSFER` da conta escolhida para o cartão (pagamento total ou parcial).
+- Regra: um pagamento abate a fatura do mês X quando a data cai entre o dia seguinte ao fechamento de X e o fechamento seguinte (`getInvoicePaymentPeriod` em `src/lib/creditCardMath.ts`). A tela mostra Total, Pago e Em aberto.
 
 ## 2. Rebalanceamento de Investimentos
 - **Onde estamos:** A gestão básica de investimentos existe, mas a inteligência de alocação não está completa.
