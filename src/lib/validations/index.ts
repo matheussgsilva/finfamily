@@ -86,6 +86,22 @@ export const transactionSchema = z.object({
 export type TransactionInput = z.infer<typeof transactionSchema>;
 
 // ─────────────────────────────────────────────────────────────
+// Pagamento de fatura de cartão
+// ─────────────────────────────────────────────────────────────
+export const invoicePaymentSchema = z.object({
+  cardId: z.string().min(1, "Selecione o cartão"),
+  sourceAccountId: z.string().min(1, "Selecione a conta"),
+  amount: z.coerce.number().positive("Valor deve ser maior que zero"),
+  // Dia do pagamento (yyyy-MM-dd). Mantido como texto para a action montar a
+  // data no mesmo fuso usado no cálculo da janela de pagamento da fatura.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida"),
+  month: z.coerce.number().int().min(1).max(12),
+  year: z.coerce.number().int().min(2000).max(2100),
+});
+
+export type InvoicePaymentInput = z.infer<typeof invoicePaymentSchema>;
+
+// ─────────────────────────────────────────────────────────────
 // Orçamentos
 // ─────────────────────────────────────────────────────────────
 export const budgetSchema = z.object({

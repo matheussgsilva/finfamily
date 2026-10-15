@@ -16,7 +16,12 @@ import {
 } from "date-fns";
 import { computeNextOccurrenceDate } from "@/lib/recurrence";
 import { investmentValueAt, reconcileOpeningBalance, type InvestmentHistoryInput } from "@/lib/netWorthMath";
-import { getInvoicePaymentPeriod, getInvoicePeriod, summarizeInvoice } from "@/lib/creditCardMath";
+import {
+  getInvoiceDueDate,
+  getInvoicePaymentPeriod,
+  getInvoicePeriod,
+  summarizeInvoice,
+} from "@/lib/creditCardMath";
 import type {
   AllocationData,
   BudgetWithProgress,
@@ -653,8 +658,13 @@ export interface CreditCardInvoiceData {
   open: number;
   startDate: Date;
   endDate: Date;
+  // Dias (yyyy-MM-dd, no fuso do servidor) da janela em que um pagamento abate
+  // esta fatura (ver getInvoicePaymentPeriod) e do vencimento. Strings em vez de
+  // Date para o cliente não deslocar o dia ao converter para o fuso local.
+  paymentStartDay: string;
+  paymentEndDay: string;
+  dueDay: string | null;
   closingDay: number;
-  dueDay: number | null;
 }
 
 export async function getCreditCardInvoice(
@@ -707,6 +717,7 @@ export async function getCreditCardInvoice(
   const transactions = charges.map(toItem);
   const paymentItems = payments.map(toItem);
   const summary = summarizeInvoice(accountId, transactions, paymentItems);
+  const dueDate = getInvoiceDueDate(month, year, account.closingDay, account.dueDay);
 
   return {
     transactions,
@@ -714,7 +725,9 @@ export async function getCreditCardInvoice(
     ...summary,
     startDate,
     endDate,
+    paymentStartDay: format(paymentPeriod.startDate, "yyyy-MM-dd"),
+    paymentEndDay: format(paymentPeriod.endDate, "yyyy-MM-dd"),
+    dueDay: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
     closingDay: account.closingDay || 1,
-    dueDay: account.dueDay,
   };
 }

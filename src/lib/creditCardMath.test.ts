@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getInvoiceDueDate,
   getInvoicePaymentPeriod,
   getInvoicePeriod,
   summarizeInvoice,
@@ -108,5 +109,27 @@ describe("summarizeInvoice", () => {
 
   it("lista vazia resulta em zero", () => {
     expect(summarizeInvoice(CARD, [], [])).toEqual({ total: 0, paid: 0, open: 0 });
+  });
+});
+
+describe("getInvoiceDueDate", () => {
+  it("vence no mesmo mês quando o vencimento é depois do fechamento", () => {
+    expect(ymd(getInvoiceDueDate(9, 2026, 5, 15)!)).toEqual({ year: 2026, month: 9, day: 15 });
+  });
+
+  it("vence no mês seguinte quando o vencimento é antes do fechamento", () => {
+    expect(ymd(getInvoiceDueDate(9, 2026, 28, 5)!)).toEqual({ year: 2026, month: 10, day: 5 });
+  });
+
+  it("cruza a virada do ano", () => {
+    expect(ymd(getInvoiceDueDate(12, 2026, 28, 5)!)).toEqual({ year: 2027, month: 1, day: 5 });
+  });
+
+  it("limita ao último dia do mês", () => {
+    expect(ymd(getInvoiceDueDate(1, 2026, 31, 30)!)).toEqual({ year: 2026, month: 2, day: 28 });
+  });
+
+  it("retorna null sem dia de vencimento", () => {
+    expect(getInvoiceDueDate(9, 2026, 5, null)).toBeNull();
   });
 });
