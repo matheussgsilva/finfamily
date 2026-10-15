@@ -15,6 +15,7 @@ import {
   ExpenseDonut,
 } from "@/components/dashboard/DashboardCharts";
 import { RecentTransactions } from "@/components/dashboard/RecentTransactions";
+import { endOfDay } from "date-fns";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -29,7 +30,8 @@ export default async function DashboardPage() {
     getDashboardKPIs(userId),
     getExpenseByCategory(userId, month, year),
     getMonthlyCashFlow(userId, 6),
-    getTransactions(userId),
+    // Só o que já aconteceu: parcelas futuras não são "recentes".
+    getTransactions(userId, { endDate: endOfDay(now) }),
   ]);
 
   const monthTotalExpense = expenseByCategory.reduce((s, c) => s + c.value, 0);

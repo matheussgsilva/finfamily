@@ -19,18 +19,63 @@ export function getInvoicePeriod(month: number, year: number, closingDay: number
   };
 }
 
+/**
+ * Janela em que um pagamento abate a fatura do mês X: do dia seguinte ao
+ * fechamento de X até o fechamento seguinte (= período da fatura de X+1).
+ * Ex.: fatura de Setembro fecha em 05/09 => pagamentos de 06/09 a 05/10 abatem Setembro.
+ */
+export function getInvoicePaymentPeriod(
+  month: number,
+  year: number,
+  closingDay: number | null
+): InvoicePeriod {
+  return getInvoicePeriod(month + 1, year, closingDay);
+}
+
 export interface InvoiceTransaction {
   type: "INCOME" | "EXPENSE" | "TRANSFER";
   amount: number;
+  bankAccountId: string;
+  destinationAccountId: string | null;
 }
 
+export interface InvoiceSummary {
+  total: number; // compras do período menos estornos
+  paid: number; // pagamentos (transferências para o cartão) na janela de pagamento
+  open: number; // quanto ainda falta pagar
+}
+
+const toCents = (value: number) => Math.round(value * 100);
+
 /**
- * Soma o total da fatura: despesas aumentam o valor devido, pagamentos (entradas/transferências) reduzem.
+ * Resume uma fatura:
+ * - `periodTransactions` (dentro do período da fatura): o que sai do cartão
+ *   (EXPENSE ou TRANSFER com o cartão como origem) aumenta o total; INCOME no
+ *   cartão é estorno e reduz. Transferências *para* o cartão nesse período são
+ *   pagamentos da fatura anterior e não entram aqui.
+ * - `paymentTransactions` (dentro de `getInvoicePaymentPeriod`): transferências
+ *   com o cartão como destino somam em `paid`.
  */
-export function calculateInvoiceTotal(transactions: InvoiceTransaction[]): number {
-  return transactions.reduce((acc, t) => {
-    if (t.type === "EXPENSE") return acc + t.amount;
-    if (t.type === "INCOME" || t.type === "TRANSFER") return acc - t.amount;
-    return acc;
-  }, 0);
+export function summarizeInvoice(
+  cardId: string,
+  periodTransactions: InvoiceTransaction[],
+  paymentTransactions: InvoiceTransaction[]
+): InvoiceSummary {
+  let totalCents = 0;
+  for (const t of periodTransactions) {
+    if (t.bankAccountId !== cardId) continue;
+    if (t.type === "EXPENSE" || t.type === "TRANSFER") totalCents += toCents(t.amount);
+    else if (t.type === "INCOME") totalCents -= toCents(t.amount);
+  }
+
+  let paidCents = 0;
+  for (const t of paymentTransactions) {
+    if (t.type === "TRANSFER" && t.destinationAccountId === cardId) paidCents += toCents(t.amount);
+  }
+
+  return {
+    total: totalCents / 100,
+    paid: paidCents / 100,
+    open: Math.max(totalCents - paidCents, 0) / 100,
+  };
 }

@@ -6,6 +6,7 @@ import { transactionSchema, type TransactionInput } from "@/lib/validations";
 import { getRequiredUserId } from "@/lib/session";
 import { getBudgetAlertMessage } from "@/lib/budgetMath";
 import { DEFAULT_RECURRENCE_RULE } from "@/lib/recurrence";
+import { splitInstallments } from "@/lib/installmentMath";
 import type { ActionResult } from "@/types";
 import { addMonths, startOfMonth, endOfMonth } from "date-fns";
 
@@ -82,40 +83,48 @@ export async function createTransaction(input: TransactionInput): Promise<Action
     const installments = data.installments ?? null;
     const total = data.amount;
 
-    // Se parcelado, distribuir em N transações mensais
+    // Se parcelado, dividir o total em N transações mensais. Tudo numa transação
+    // do banco para não deixar uma série pela metade se algo falhar no meio.
     if (installments && installments > 1) {
-      let parentId: string | null = null;
+      const amounts = splitInstallments(total, installments);
+      const base = {
+        type: data.type,
+        notes: data.notes ?? null,
+        tags: data.tags,
+        categoryId: data.type === "TRANSFER" ? null : (data.categoryId ?? null),
+        bankAccountId: data.bankAccountId,
+        destinationAccountId:
+          data.type === "TRANSFER" ? (data.destinationAccountId ?? null) : null,
+        familyMemberId: data.familyMemberId ?? null,
+        installments,
+        userId,
+      };
 
-      for (let i = 1; i <= installments; i++) {
-        const installmentDate = addMonths(data.date, i - 1);
-        const created: { id: string } = await db.transaction.create({
+      await db.$transaction(async (tx) => {
+        const first = await tx.transaction.create({
           data: {
-            description:
-              i === 1 ? data.description : `${data.description} (${i}/${installments})`,
-            amount: Number(total.toFixed(2)),
-            type: data.type,
-            date: installmentDate,
-            notes: data.notes ?? null,
-            tags: data.tags,
-            categoryId: data.type === "TRANSFER" ? null : (data.categoryId ?? null),
-            bankAccountId: data.bankAccountId,
-            destinationAccountId:
-              data.type === "TRANSFER" ? (data.destinationAccountId ?? null) : null,
-            familyMemberId: data.familyMemberId ?? null,
-            installments,
-            installmentNum: i,
-            parentId: parentId ?? null,
-            userId,
+            ...base,
+            description: data.description,
+            amount: amounts[0],
+            date: data.date,
+            installmentNum: 1,
           },
         });
-        if (!parentId) {
-          parentId = created.id;
-          await db.transaction.update({
-            where: { id: created.id },
-            data: { parentId: created.id },
-          });
-        }
-      }
+        await tx.transaction.update({ where: { id: first.id }, data: { parentId: first.id } });
+        await tx.transaction.createMany({
+          data: amounts.slice(1).map((amount, idx) => {
+            const num = idx + 2;
+            return {
+              ...base,
+              description: `${data.description} (${num}/${installments})`,
+              amount,
+              date: addMonths(data.date, num - 1),
+              installmentNum: num,
+              parentId: first.id,
+            };
+          }),
+        });
+      });
     } else {
       await db.transaction.create({
         data: {
