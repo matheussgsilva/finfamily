@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import {
   addMonths,
+  differenceInCalendarMonths,
   eachDayOfInterval,
   endOfDay,
   endOfMonth,
@@ -14,7 +15,7 @@ import {
   subDays,
   subMonths,
 } from "date-fns";
-import { computeNextOccurrenceDate } from "@/lib/recurrence";
+import { computeNextOccurrenceDate, getDueOccurrences } from "@/lib/recurrence";
 import { investmentValueAt, reconcileOpeningBalance, type InvestmentHistoryInput } from "@/lib/netWorthMath";
 import {
   getInvoiceDueDate,
@@ -22,6 +23,12 @@ import {
   getInvoicePeriod,
   summarizeInvoice,
 } from "@/lib/creditCardMath";
+import {
+  buildInvoiceEvents,
+  type DatedInvoiceTransaction,
+  type ProjectionEvent,
+  type VariableEstimate,
+} from "@/lib/projectionMath";
 import type {
   AllocationData,
   BudgetWithProgress,
@@ -752,4 +759,221 @@ export async function getCategorizationRules(userId: string): Promise<Categoriza
     categoryColor: r.category.color,
     categoryType: r.category.type,
   }));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Fluxo de caixa projetado
+// ─────────────────────────────────────────────────────────────
+export interface CashFlowProjectionInput {
+  startDay: string;
+  endDay: string;
+  startBalance: number;
+  events: ProjectionEvent[];
+  /** Média mensal de receitas/despesas avulsas; null sem histórico suficiente. */
+  variable: (VariableEstimate & { basedOnMonths: number }) | null;
+}
+
+/** Dia de uma transação gravada (meia-noite UTC, mesmo padrão do formatDate). */
+const txDay = (date: Date) => date.toISOString().slice(0, 10);
+
+/**
+ * Reúne o que a projeção precisa; o cálculo dia a dia fica em buildProjection
+ * (projectionMath), que roda no cliente para o simulador e a estimativa
+ * ligarem/desligarem sem nova requisição.
+ *
+ * Dinheiro disponível = contas que não são cartão. Cartões entram pelas faturas,
+ * na data de vencimento.
+ */
+export async function getCashFlowProjectionInput(
+  userId: string,
+  months: number
+): Promise<CashFlowProjectionInput> {
+  const now = new Date();
+  const asOf = endOfDay(now);
+  const horizonEnd = endOfDay(addMonths(now, months));
+
+  const accounts = await getAccountBalances(userId);
+  const cashIds = new Set(accounts.filter((a) => a.type !== "CREDIT_CARD").map((a) => a.id));
+  const cards = accounts.filter((a) => a.type === "CREDIT_CARD");
+  const cardIds = cards.map((c) => c.id);
+
+  // Faturas do mês anterior (pode vencer neste mês) até o fim do horizonte.
+  const invoiceMonths = Array.from({ length: months + 2 }, (_, i) => {
+    const d = addMonths(now, i - 1);
+    return { month: d.getMonth() + 1, year: d.getFullYear() };
+  });
+  // Faixa que cobre todos os períodos e janelas de pagamento (com folga de um mês).
+  const cardRangeStart = startOfMonth(subMonths(now, 3));
+  const cardRangeEnd = endOfMonth(addMonths(now, months + 2));
+
+  const variableStart = startOfMonth(subMonths(now, 3));
+  const variableEnd = endOfMonth(subMonths(now, 1));
+
+  const [futureTx, roots, seriesLastDates, cardTx, variableSums, firstTx] = await Promise.all([
+    db.transaction.findMany({
+      where: { userId, date: { gt: asOf, lte: horizonEnd } },
+      select: {
+        type: true,
+        amount: true,
+        date: true,
+        description: true,
+        bankAccountId: true,
+        destinationAccountId: true,
+      },
+    }),
+    db.transaction.findMany({
+      where: { userId, isRecurring: true, parentId: null, recurrenceRule: { not: null } },
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        date: true,
+        description: true,
+        bankAccountId: true,
+        destinationAccountId: true,
+      },
+    }),
+    db.transaction.groupBy({
+      by: ["parentId"],
+      where: { userId, parentId: { not: null } },
+      _max: { date: true },
+    }),
+    cardIds.length > 0
+      ? db.transaction.findMany({
+          where: {
+            userId,
+            date: { gte: cardRangeStart, lte: cardRangeEnd },
+            OR: [
+              { bankAccountId: { in: cardIds } },
+              { type: "TRANSFER", destinationAccountId: { in: cardIds } },
+            ],
+          },
+          select: { type: true, amount: true, date: true, bankAccountId: true, destinationAccountId: true },
+        })
+      : Promise.resolve([]),
+    // Avulsas: sem recorrência (raiz tem recurrenceRule; filhas têm parentId),
+    // sem parcelas (installments) e sem transferências.
+    db.transaction.groupBy({
+      by: ["type"],
+      where: {
+        userId,
+        type: { in: ["INCOME", "EXPENSE"] },
+        parentId: null,
+        recurrenceRule: null,
+        installments: null,
+        date: { gte: variableStart, lte: variableEnd },
+      },
+      _sum: { amount: true },
+    }),
+    db.transaction.aggregate({ where: { userId }, _min: { date: true } }),
+  ]);
+
+  /** Efeito de um lançamento no dinheiro disponível (0 = não afeta). */
+  const cashEffect = (t: {
+    type: string;
+    amount: number;
+    bankAccountId: string;
+    destinationAccountId: string | null;
+  }) => {
+    const fromCash = cashIds.has(t.bankAccountId);
+    if (t.type === "INCOME") return fromCash ? t.amount : 0;
+    if (t.type === "EXPENSE") return fromCash ? -t.amount : 0;
+    if (!t.destinationAccountId) return 0;
+    const toCash = cashIds.has(t.destinationAccountId);
+    if (fromCash && !toCash) return -t.amount; // conta → cartão: pagamento de fatura
+    if (!fromCash && toCash) return t.amount; // cartão → conta
+    return 0; // entre contas próprias
+  };
+
+  const events: ProjectionEvent[] = [];
+
+  for (const tx of futureTx) {
+    const amount = cashEffect({ ...tx, amount: Number(tx.amount) });
+    if (amount !== 0) {
+      events.push({ day: txDay(tx.date), amount, description: tx.description, kind: "transaction" });
+    }
+  }
+
+  // Recorrências: ocorrências futuras ainda não geradas. As que vencem até
+  // hoje são lançadas ao abrir o app e já entram no saldo atual.
+  const lastDateBySeries = new Map(seriesLastDates.map((s) => [s.parentId, s._max.date]));
+  const projectedCardCharges: DatedInvoiceTransaction[] = [];
+  for (const root of roots) {
+    const childLast = lastDateBySeries.get(root.id);
+    const lastDate = childLast && childLast > root.date ? childLast : root.date;
+    // Folga no teto: ocorrências passadas ainda não geradas também contam nele.
+    const occurrences = getDueOccurrences(root.date, lastDate, horizonEnd, months + 36).filter(
+      (date) => date > asOf
+    );
+    const amount = Number(root.amount);
+
+    for (const date of occurrences) {
+      if (cardIds.includes(root.bankAccountId) && root.type !== "TRANSFER") {
+        projectedCardCharges.push({
+          type: root.type,
+          amount,
+          bankAccountId: root.bankAccountId,
+          destinationAccountId: null,
+          date,
+        });
+        continue;
+      }
+      const effect = cashEffect({ ...root, amount });
+      if (effect !== 0) {
+        events.push({ day: txDay(date), amount: effect, description: root.description, kind: "recurrence" });
+      }
+    }
+  }
+
+  for (const card of cards) {
+    const toInvoiceTx = (t: (typeof cardTx)[number]): DatedInvoiceTransaction => ({
+      type: t.type,
+      amount: Number(t.amount),
+      bankAccountId: t.bankAccountId,
+      destinationAccountId: t.destinationAccountId,
+      date: t.date,
+    });
+    events.push(
+      ...buildInvoiceEvents({
+        cardId: card.id,
+        cardName: card.name,
+        closingDay: card.closingDay,
+        dueDay: card.dueDay,
+        charges: [
+          ...cardTx.filter((t) => t.bankAccountId === card.id).map(toInvoiceTx),
+          ...projectedCardCharges.filter((t) => t.bankAccountId === card.id),
+        ],
+        payments: cardTx
+          .filter((t) => t.type === "TRANSFER" && t.destinationAccountId === card.id)
+          .map(toInvoiceTx),
+        invoiceMonths,
+        today: now,
+      })
+    );
+  }
+
+  // Média das avulsas nos últimos 3 meses completos (ou menos, se o histórico for curto).
+  let variable: CashFlowProjectionInput["variable"] = null;
+  const firstDate = firstTx._min.date;
+  if (firstDate && firstDate <= variableEnd) {
+    const from = firstDate > variableStart ? firstDate : variableStart;
+    const basedOnMonths = Math.min(3, differenceInCalendarMonths(variableEnd, from) + 1);
+    const sumOf = (type: string) =>
+      Number(variableSums.find((row) => row.type === type)?._sum.amount ?? 0);
+    variable = {
+      monthlyIncome: Number((sumOf("INCOME") / basedOnMonths).toFixed(2)),
+      monthlyExpense: Number((sumOf("EXPENSE") / basedOnMonths).toFixed(2)),
+      basedOnMonths,
+    };
+  }
+
+  return {
+    startDay: format(now, "yyyy-MM-dd"),
+    endDay: format(horizonEnd, "yyyy-MM-dd"),
+    startBalance: Number(
+      accounts.filter((a) => cashIds.has(a.id)).reduce((s, a) => s + a.balance, 0).toFixed(2)
+    ),
+    events: events.sort((a, b) => a.day.localeCompare(b.day)),
+    variable,
+  };
 }

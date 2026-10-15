@@ -1,11 +1,10 @@
 import React from "react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getAccountBalances } from "@/lib/queries";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CashFlowTabs } from "@/components/shared/CashFlowTabs";
 import { CreditCardsClient } from "@/components/credit-cards/CreditCardsClient";
 
 export default async function CartoesPage() {
@@ -40,20 +39,7 @@ export default async function CartoesPage() {
         description="Acompanhe e pague as faturas dos seus cartões de crédito."
       />
 
-      <Tabs defaultValue="cartoes" className="mb-4">
-        <TabsList>
-          <TabsTrigger value="transacoes">
-            <Link href="/fluxo-de-caixa">Transações</Link>
-          </TabsTrigger>
-          <TabsTrigger value="orcamentos">
-            <Link href="/fluxo-de-caixa/orcamentos">Orçamentos</Link>
-          </TabsTrigger>
-          <TabsTrigger value="cartoes">Faturas</TabsTrigger>
-          <TabsTrigger value="recorrencias">
-            <Link href="/fluxo-de-caixa/recorrencias">Recorrências</Link>
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <CashFlowTabs active="cartoes" />
 
       <CreditCardsClient creditCards={cardItems} paymentAccounts={paymentAccounts} />
     </div>
