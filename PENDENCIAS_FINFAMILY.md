@@ -10,11 +10,11 @@ Abaixo estão as principais funcionalidades que restam ser implementadas de acor
 - Metas por classe em **Investimentos → Onde aportar → Definir metas** (somam 100%), e "Peso na classe (%)" opcional em cada ativo.
 - O card **Onde aportar** divide o valor do aporte entre o que está abaixo da meta (sem vendas), até o ativo, com cotas inteiras para Ações/FIIs.
 
-## 3. Exportação de Relatórios
-- **Onde estamos:** O dashboard e o fluxo de caixa mostram tabelas e gráficos, mas os dados estão "presos" na plataforma.
-- **O que falta:** Implementar uma funcionalidade de **Exportação (CSV / Excel / PDF)**.
-  - No Fluxo de Caixa, adicionar um botão de "Exportar".
-  - Chamar uma Server Route (ex: `route.ts` API do Next.js) que busque as transações filtradas do mês e gere um arquivo CSV estruturado para download.
+## 3. Exportação de Relatórios ✅ Concluído
+- **Fluxo de Caixa → Exportar**: período (mês exibido, ano ou intervalo) e, opcionalmente, os filtros da tela.
+  - **CSV** (`/api/export/transacoes`) no formato do Excel pt-BR (";", vírgula decimal, acentos).
+  - **Relatório** (`/relatorio/transacoes`) com resumo, totais por categoria e lançamentos, pronto para "Imprimir → Salvar como PDF".
+- **Configurações → Perfil → Backup dos dados**: JSON com todos os dados do usuário (sem a senha). Restaurar a partir do backup ainda não existe.
 
 ## 4. Atualização de Cotações ✅ Concluído
 - O botão "Atualizar preços" busca as cotações no Yahoo Finance; preços em outra moeda (cripto, internacionais) são convertidos para BRL pelo câmbio do momento, e a tela mostra a cotação original e o câmbio usado.

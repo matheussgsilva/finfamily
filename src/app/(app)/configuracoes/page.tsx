@@ -8,6 +8,7 @@ import { AccountsSection } from "@/components/settings/AccountsSection";
 import { CategoriesSection } from "@/components/settings/CategoriesSection";
 import { MembersSection } from "@/components/settings/MembersSection";
 import { ProfileSection } from "@/components/settings/ProfileSection";
+import { DataExportSection } from "@/components/settings/DataExportSection";
 import { RulesSection } from "@/components/settings/RulesSection";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Building2, Tags, Users, User as UserIcon, Wand2 } from "lucide-react";
@@ -71,6 +72,7 @@ export default async function ConfiguracoesPage() {
 
         <TabsContent value="perfil">
           {userProfile && <ProfileSection user={userProfile} />}
+          <DataExportSection />
         </TabsContent>
         <TabsContent value="contas">
           <AccountsSection accounts={accountItems} />

@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma";
 import { auth } from "@/lib/auth";
 import {
   addMonths,
@@ -87,41 +88,43 @@ export async function getFamilyMembers(userId: string) {
 // ─────────────────────────────────────────────────────────────
 // Transações
 // ─────────────────────────────────────────────────────────────
+/**
+ * Filtro de transações compartilhado pela lista do Fluxo de Caixa e pela
+ * exportação. `gte` e `lte` precisam ficar no mesmo objeto `date`: espalhar
+ * dois `{ date: ... }` faz o segundo sobrescrever o primeiro.
+ */
+function buildTransactionWhere(
+  userId: string,
+  filters: TransactionFilters
+): Prisma.TransactionWhereInput {
+  const { startDate, endDate, categoryId, bankAccountId, familyMemberId, type, search } = filters;
+  return {
+    userId,
+    ...(startDate || endDate
+      ? { date: { ...(startDate ? { gte: startDate } : {}), ...(endDate ? { lte: endDate } : {}) } }
+      : {}),
+    ...(categoryId ? { categoryId } : {}),
+    ...(bankAccountId ? { bankAccountId } : {}),
+    ...(familyMemberId ? { familyMemberId } : {}),
+    ...(type ? { type } : {}),
+    ...(search ? { description: { contains: search, mode: "insensitive" } } : {}),
+  };
+}
+
+const TRANSACTION_RELATIONS = {
+  category: { select: { id: true, name: true, icon: true, color: true } },
+  bankAccount: { select: { id: true, name: true, type: true, color: true } },
+  destinationAccount: { select: { id: true, name: true, type: true, color: true } },
+  familyMember: { select: { id: true, name: true, color: true } },
+} as const;
+
 export async function getTransactions(
   userId: string,
   filters: TransactionFilters = {}
 ): Promise<TransactionWithRelations[]> {
-  const {
-    startDate,
-    endDate,
-    categoryId,
-    bankAccountId,
-    familyMemberId,
-    type,
-    search,
-  } = filters;
-
   const transactions = await db.transaction.findMany({
-    where: {
-      userId,
-      ...(startDate ? { date: { gte: startDate } } : {}),
-      ...(endDate ? { date: { lte: endDate } } : {}),
-      ...(categoryId ? { categoryId } : {}),
-      ...(bankAccountId ? { bankAccountId } : {}),
-      ...(familyMemberId ? { familyMemberId } : {}),
-      ...(type ? { type } : {}),
-      ...(search
-        ? { description: { contains: search, mode: "insensitive" } }
-        : {}),
-    },
-    include: {
-      category: { select: { id: true, name: true, icon: true, color: true } },
-      bankAccount: { select: { id: true, name: true, type: true, color: true } },
-      destinationAccount: {
-        select: { id: true, name: true, type: true, color: true },
-      },
-      familyMember: { select: { id: true, name: true, color: true } },
-    },
+    where: buildTransactionWhere(userId, filters),
+    include: TRANSACTION_RELATIONS,
     orderBy: { date: "desc" },
     // Cap de segurança, não paginação real: o único chamador (TransactionsClient)
     // sempre filtra por um mês, então >200 transações em um único mês nunca acontece
@@ -983,5 +986,76 @@ export async function getCashFlowProjectionInput(
     ),
     events: events.sort((a, b) => a.day.localeCompare(b.day)),
     variable,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Exportação e backup
+// ─────────────────────────────────────────────────────────────
+/** Todas as transações do filtro (sem o limite da lista), em ordem cronológica. */
+export async function getTransactionsForExport(
+  userId: string,
+  filters: TransactionFilters
+): Promise<TransactionWithRelations[]> {
+  const transactions = await db.transaction.findMany({
+    where: buildTransactionWhere(userId, filters),
+    include: TRANSACTION_RELATIONS,
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+  });
+  return transactions.map((tx) => ({ ...tx, amount: Number(tx.amount) }));
+}
+
+/**
+ * Tudo o que pertence ao usuário, para o backup. O perfil vai sem o hash da
+ * senha e sem as tabelas de sessão do NextAuth. Os Decimals são mantidos aqui
+ * e serializados como texto pela rota (sem perder precisão).
+ */
+export async function getBackupData(userId: string) {
+  const [
+    user,
+    bankAccounts,
+    familyMembers,
+    categories,
+    transactions,
+    budgets,
+    investments,
+    categorizationRules,
+    allocationTargets,
+  ] = await Promise.all([
+    db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, createdAt: true },
+    }),
+    db.bankAccount.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+    db.familyMember.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+    db.category.findMany({
+      where: { OR: [{ userId }, { userId: null }] },
+      orderBy: [{ type: "asc" }, { name: "asc" }],
+    }),
+    db.transaction.findMany({ where: { userId }, orderBy: [{ date: "asc" }, { createdAt: "asc" }] }),
+    db.budget.findMany({ where: { userId }, orderBy: [{ year: "asc" }, { month: "asc" }] }),
+    db.investment.findMany({
+      where: { userId },
+      include: {
+        operations: { orderBy: { date: "asc" } },
+        proventos: { orderBy: { paymentDate: "asc" } },
+        priceHistory: { orderBy: { date: "asc" } },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+    db.categorizationRule.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+    db.allocationTarget.findMany({ where: { userId } }),
+  ]);
+
+  return {
+    user,
+    bankAccounts,
+    familyMembers,
+    categories,
+    transactions,
+    budgets,
+    investments,
+    categorizationRules,
+    allocationTargets,
   };
 }
