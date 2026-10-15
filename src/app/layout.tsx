@@ -28,7 +28,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-[#030712] text-zinc-100">
+      <body className="min-h-full bg-[#030712] text-zinc-100 print:bg-white print:text-black">
         {children}
         <Toaster theme="dark" position="top-right" richColors />
       </body>

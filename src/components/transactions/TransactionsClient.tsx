@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import {
+  TRANSACTION_TYPE_LABELS,
   type AccountType,
   type TransactionType,
   type TransactionWithRelations,
@@ -25,6 +26,7 @@ import { ptBR } from "date-fns/locale";
 import {
   ChevronLeft,
   ChevronRight,
+  Download,
   Layers,
   Pencil,
   Receipt,
@@ -38,6 +40,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NewTransactionButton } from "./NewTransactionButton";
 import { TransactionFormDialog } from "./TransactionFormDialog";
+import { ExportDialog } from "./ExportDialog";
 
 interface CategoryItem {
   id: string;
@@ -80,6 +83,7 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TransactionWithRelations | null>(null);
   const [deleting, setDeleting] = useState<TransactionWithRelations | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const requestId = useRef(0);
 
   const activeMonth = useMemo(() => addMonths(new Date(), monthOffset), [monthOffset]);
@@ -143,8 +147,12 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
 
   return (
     <div className="space-y-4">
-      {/* Ações do header (importar extrato, nova transação) */}
-      <div className="flex justify-end gap-2">
+      {/* Ações do header (exportar, importar extrato, nova transação) */}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={() => setExportOpen(true)}>
+          <Download size={16} />
+          Exportar
+        </Button>
         <Button variant="outline" asChild>
           <Link href="/fluxo-de-caixa/importar">
             <Upload size={16} />
@@ -411,6 +419,26 @@ export function TransactionsClient({ accounts, categories, members }: Transactio
         categories={categories}
         members={members}
         onSuccess={fetchTransactions}
+      />
+
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        activeMonth={activeMonth}
+        filters={{
+          type: (type || undefined) as TransactionType | undefined,
+          categoryId: categoryId || undefined,
+          bankAccountId: bankAccountId || undefined,
+          familyMemberId: familyMemberId || undefined,
+          search: debouncedSearch.trim() || undefined,
+        }}
+        filterLabels={[
+          type && `Tipo: ${TRANSACTION_TYPE_LABELS[type as TransactionType]}`,
+          categoryId && `Categoria: ${categories.find((c) => c.id === categoryId)?.name ?? "—"}`,
+          bankAccountId && `Conta: ${accounts.find((a) => a.id === bankAccountId)?.name ?? "—"}`,
+          familyMemberId && `Membro: ${members.find((m) => m.id === familyMemberId)?.name ?? "—"}`,
+          debouncedSearch.trim() && `Busca: "${debouncedSearch.trim()}"`,
+        ].filter((label): label is string => !!label)}
       />
 
       <ConfirmDialog

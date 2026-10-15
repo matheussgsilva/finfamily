@@ -85,8 +85,15 @@ export const transactionSchema = z.object({
 
 export type TransactionInput = z.infer<typeof transactionSchema>;
 
-/** Dia no formato yyyy-MM-dd. */
-const isoDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida");
+/** Dia no formato yyyy-MM-dd, que precisa existir no calendário (rejeita 2026-02-31). */
+const isoDaySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida")
+  .refine((day) => {
+    const [y, m, d] = day.split("-").map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+  }, "Data inválida");
 
 // ─────────────────────────────────────────────────────────────
 // Pagamento de fatura de cartão
@@ -145,6 +152,29 @@ export const categorizationRuleSchema = z.object({
 });
 
 export type CategorizationRuleInput = z.infer<typeof categorizationRuleSchema>;
+
+// ─────────────────────────────────────────────────────────────
+// Exportação de transações (CSV / relatório)
+// ─────────────────────────────────────────────────────────────
+const MAX_EXPORT_DAYS = 3660; // ~10 anos
+
+export const exportFiltersSchema = z
+  .object({
+    start: isoDaySchema,
+    end: isoDaySchema,
+    type: z.enum(["INCOME", "EXPENSE", "TRANSFER"]).optional(),
+    categoryId: z.string().min(1).optional(),
+    bankAccountId: z.string().min(1).optional(),
+    familyMemberId: z.string().min(1).optional(),
+    search: z.string().trim().min(1).max(100).optional(),
+  })
+  .refine((f) => f.start <= f.end, { message: "A data inicial deve ser anterior à final." })
+  .refine(
+    (f) => (Date.parse(f.end) - Date.parse(f.start)) / 86_400_000 <= MAX_EXPORT_DAYS,
+    { message: "Período máximo de 10 anos." }
+  );
+
+export type ExportFilters = z.infer<typeof exportFiltersSchema>;
 
 // ─────────────────────────────────────────────────────────────
 // Orçamentos
