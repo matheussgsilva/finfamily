@@ -12,6 +12,7 @@ import {
   type PriceFetchResult,
 } from "@/actions/investment.actions";
 import { ASSET_CLASS_LABELS, type AssetClass } from "@/types";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 type Status = "idle" | "fetching" | "ok" | "error" | "no-ticker";
+
+/** Preço na moeda original (ex.: "US$ 65.000,00"); subunidades como GBp não são ISO. */
+function formatOriginal(price: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(price);
+  } catch {
+    return `${currency} ${price.toLocaleString("pt-BR")}`;
+  }
+}
 
 export interface PriceAssetItem {
   id: string;
@@ -63,6 +73,8 @@ function PriceUpdateDialogInner({
   const router = useRouter();
   const [prices, setPrices] = useState<Record<string, string>>(() => initialPrices(assets));
   const [statuses, setStatuses] = useState<Record<string, Status>>(() => initialStatuses(assets));
+  // Detalhe exibido abaixo do ativo: conversão de câmbio ou motivo do erro.
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -88,20 +100,26 @@ function PriceUpdateDialogInner({
       }
       const nextStatus: Record<string, Status> = { ...statuses };
       const nextPrices: Record<string, string> = { ...prices };
+      const nextNotes: Record<string, string> = {};
       let ok = 0;
       for (const result of res.data as PriceFetchResult[]) {
         if (result.status === "ok") {
           nextPrices[result.id] = String(result.price);
           nextStatus[result.id] = "ok";
+          if (result.fxRate !== 1) {
+            nextNotes[result.id] = `${formatOriginal(result.originalPrice, result.originalCurrency)} × ${result.fxRate.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} (câmbio)`;
+          }
           ok++;
         } else if (result.status === "error") {
           nextStatus[result.id] = "error";
+          nextNotes[result.id] = result.reason;
         } else {
           nextStatus[result.id] = "no-ticker";
         }
       }
       setPrices(nextPrices);
       setStatuses(nextStatus);
+      setNotes(nextNotes);
       toast.success(
         ok > 0
           ? `${ok} ${ok === 1 ? "preço atualizado" : "preços atualizados"}.`
@@ -177,6 +195,16 @@ function PriceUpdateDialogInner({
                         </>
                       )}
                     </p>
+                    {notes[asset.id] && (
+                      <p
+                        className={cn(
+                          "text-[11px]",
+                          status === "error" ? "text-red-400" : "text-zinc-400"
+                        )}
+                      >
+                        {notes[asset.id]}
+                      </p>
+                    )}
                   </div>
                   <div className="w-28 shrink-0">
                     <Input
@@ -197,7 +225,7 @@ function PriceUpdateDialogInner({
                     )}
                     {status === "ok" && <CheckCircle2 size={16} className="text-emerald-400" />}
                     {status === "error" && (
-                      <span title="Ticker não encontrado na internet">
+                      <span title={notes[asset.id] ?? "Ticker não encontrado na internet"}>
                         <AlertCircle size={16} className="text-red-400" />
                       </span>
                     )}

@@ -1,5 +1,6 @@
 import "server-only";
 import type { AssetClass } from "@/types";
+import { fxQuoteFor } from "@/lib/fx";
 
 const YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
 
@@ -69,4 +70,15 @@ export async function fetchPriceForAsset(
     if (result) return result;
   }
   return null;
+}
+
+/**
+ * Fator para converter um preço na moeda informada para BRL (1 para BRL).
+ * Já embute a divisão de subunidades (pence). Retorna null se o câmbio falhar.
+ */
+export async function fetchFxRateToBRL(currency: string): Promise<number | null> {
+  const quote = fxQuoteFor(currency);
+  if (!quote) return 1;
+  const result = await fetchMarketPrice(quote.symbol);
+  return result ? result.price / quote.divisor : null;
 }

@@ -502,26 +502,34 @@ export async function getInvestmentsWithCalcs(userId: string) {
   return { assets: computed, totalValue };
 }
 
+export async function getAllocationTargets(userId: string) {
+  const targets = await db.allocationTarget.findMany({ where: { userId } });
+  return targets.map((t) => ({ assetClass: t.assetClass, percent: Number(t.percent) }));
+}
+
 export async function getAllocationData(userId: string): Promise<AllocationData[]> {
-  const { assets, totalValue } = await getInvestmentsWithCalcs(userId);
+  const [{ assets, totalValue }, targets] = await Promise.all([
+    getInvestmentsWithCalcs(userId),
+    getAllocationTargets(userId),
+  ]);
 
-  const byClass = new Map<string, { currentValue: number; target: number }>();
+  const byClass = new Map<AllocationData["assetClass"], number>();
   for (const asset of assets) {
-    const current = byClass.get(asset.assetClass) ?? { currentValue: 0, target: 0 };
-    current.currentValue += asset.currentValue;
-    if (asset.targetAlloc !== null) {
-      current.target += asset.targetAlloc;
-    }
-    byClass.set(asset.assetClass, current);
+    byClass.set(asset.assetClass, (byClass.get(asset.assetClass) ?? 0) + asset.currentValue);
   }
+  // Classes com meta mas ainda sem ativos também aparecem (com 0%).
+  for (const target of targets) {
+    if (!byClass.has(target.assetClass)) byClass.set(target.assetClass, 0);
+  }
+  const targetByClass = new Map(targets.map((t) => [t.assetClass, t.percent]));
 
-  return [...byClass.entries()].map(([assetClass, value]) => ({
-    assetClass: assetClass as AllocationData["assetClass"],
-    label: ASSET_CLASS_LABELS[assetClass as keyof typeof ASSET_CLASS_LABELS],
-    currentPercent: totalValue > 0 ? (value.currentValue / totalValue) * 100 : 0,
-    targetPercent: value.target || null,
-    currentValue: value.currentValue,
-    color: ASSET_CLASS_COLORS[assetClass as keyof typeof ASSET_CLASS_COLORS],
+  return [...byClass.entries()].map(([assetClass, currentValue]) => ({
+    assetClass,
+    label: ASSET_CLASS_LABELS[assetClass],
+    currentPercent: totalValue > 0 ? (currentValue / totalValue) * 100 : 0,
+    targetPercent: targetByClass.get(assetClass) ?? null,
+    currentValue,
+    color: ASSET_CLASS_COLORS[assetClass],
   }));
 }
 

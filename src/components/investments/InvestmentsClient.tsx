@@ -23,6 +23,8 @@ import { InvestmentFormDialog } from "./InvestmentFormDialog";
 import { OperationFormDialog } from "./OperationFormDialog";
 import { ProventoFormDialog } from "./ProventoFormDialog";
 import { PriceUpdateDialog } from "./PriceUpdateDialog";
+import { AllocationTargetsDialog } from "./AllocationTargetsDialog";
+import { RebalanceCard } from "./RebalanceCard";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PrivacyValue } from "@/components/shared/PrivacyValue";
@@ -83,6 +85,7 @@ interface InvestmentsClientProps {
   assets: AssetWithCalcs[];
   totalValue: number;
   allocation: AllocationItem[];
+  targets: { assetClass: AssetClass; percent: number }[];
   monthlyProventos: MonthlyProvento[];
 }
 
@@ -103,6 +106,7 @@ export function InvestmentsClient({
   assets,
   totalValue,
   allocation,
+  targets,
   monthlyProventos,
 }: InvestmentsClientProps) {
   const router = useRouter();
@@ -112,6 +116,7 @@ export function InvestmentsClient({
   const [opTarget, setOpTarget] = useState<AssetWithCalcs | null>(null);
   const [proventoTarget, setProventoTarget] = useState<AssetWithCalcs | null>(null);
   const [priceOpen, setPriceOpen] = useState(false);
+  const [targetsOpen, setTargetsOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, DetailData>>({});
   const [detailLoading, setDetailLoading] = useState<string | null>(null);
@@ -274,6 +279,27 @@ export function InvestmentsClient({
           )}
         </div>
       </div>
+
+      {/* Rebalanceamento por aporte */}
+      <RebalanceCard
+        classes={allocation.map((a) => ({
+          assetClass: a.assetClass,
+          currentValue: a.currentValue,
+          targetPercent: a.targetPercent,
+        }))}
+        assets={assets.map((a) => ({
+          id: a.id,
+          name: a.name,
+          ticker: a.ticker,
+          assetClass: a.assetClass,
+          currentValue: a.currentValue,
+          price: a.currentPrice ?? a.avgPrice,
+          weight: a.targetAlloc,
+        }))}
+        onDefineTargets={() => setTargetsOpen(true)}
+      />
+
+      <AllocationTargetsDialog open={targetsOpen} onOpenChange={setTargetsOpen} targets={targets} />
 
       {/* Lista de ativos */}
       <div className="flex justify-end gap-2">

@@ -189,8 +189,11 @@ export function InvestmentFormDialog({
               <Input type="number" step="0.01" min="0" placeholder="0,00" {...register("currentPrice")} />
             </div>
             <div>
-              <Label>Alocação meta (%)</Label>
-              <Input type="number" step="0.5" min="0" max="100" placeholder="Ex.: 20" {...register("targetAlloc")} />
+              <Label>Peso na classe (%)</Label>
+              <Input type="number" step="0.5" min="0" max="100" placeholder="Ex.: 50" {...register("targetAlloc")} />
+              <p className="mt-1 text-[11px] text-zinc-500">
+                Divide o aporte entre os ativos da mesma classe.
+              </p>
             </div>
           </div>
 
